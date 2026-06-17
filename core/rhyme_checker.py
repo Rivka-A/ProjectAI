@@ -104,8 +104,11 @@ class RhymeChecker:
             score_aabb = (1 if line_keys[0] == line_keys[1] else 0) + (1 if line_keys[2] == line_keys[3] else 0)
             # בדיקת התאמה לתבנית א-ב-א-ב (שורה 1 עם 3, שורה 2 עם 4)
             score_abab = (1 if line_keys[0] == line_keys[2] else 0) + (1 if line_keys[1] == line_keys[3] else 0)
-            
-            if score_aabb >= score_abab:
+            score_aaaa= (1 if line_keys[0] == line_keys[1] == line_keys[2] == line_keys[3] else 0)  
+            if score_aaaa == 2:
+                pattern_name = "א-א-א-א (חריזה מושלמת)"
+                expected_pairs = [(0, 1), (2, 3)]
+            elif score_aabb >= score_abab:
                 pattern_name = "א-א-ב-ב (חריזה צמודה)"
                 expected_pairs = [(0, 1), (2, 3)]
             else:
