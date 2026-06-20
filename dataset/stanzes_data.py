@@ -1,86 +1,87 @@
 import os
 import json
 
-# הגדרת תיקיות המקור והיעד
 SOURCE_FOLDER = "poem"
 OUTPUT_FOLDER = "poem_parsed"
 
-# יצירת תיקיית היעד אם היא אינה קיימת
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
-    print(f"📁 התיקייה '{OUTPUT_FOLDER}' נוצרה בהצלחה.")
 
-# וידוי שתיקיית המקור קיימת
-if not os.path.exists(SOURCE_FOLDER):
-    print(f"❌ שגיאה: תיקיית המקור '{SOURCE_FOLDER}' לא נמצאה! אנא ודא שהתיקייה קיימת ומכילה קבצים.")
-    exit()
-
-def parse_text_to_stanzas(text):
-    """ מנקה את הטקסט ומפצל אותו לבתים בצורה חכמה לפי סימני פיסוק ואורך שורה """
-    all_lines = [line.strip() for line in text.split("\n")]
-    
+def parse_text_to_stanzas_balanced(text):
+    raw_lines = text.split("\n")
     clean_lines = []
-    for line in all_lines:
-        # סינון שורות ריקות וסינון קרדיטים של פרויקט בן יהודה בסוף
-        if not line or "את הטקסט[ים] לעיל הפיקו" in line or "https://" in line:
+    
+    # 1. ניקוי ופיצול לוכסנים
+    for line in raw_lines:
+        line_str = line.strip()
+        if not line_str or "את הטקסט[ים] לעיל הפיקו" in line_str or "https://" in line_str:
             continue
-        # סינון הערות שוליים בסוגריים (כמו אסף ל"ז נ')
-        if line.startswith("(") and line.endswith(")"):
+        if line_str.startswith(" Hux") or (line_str.startswith("(") and line_str.endswith(")")):
             continue
-        clean_lines.append(line)
-        
+            
+        if "/" in line_str:
+            parts = [p.strip() for p in line_str.split("/") if p.strip()]
+            clean_lines.extend(parts)
+        else:
+            clean_lines.append(line_str)
+            
     if not clean_lines:
         return "Untitled", []
-
-    # השורה הראשונה מוגדרת ככותרת, השאר הם גוף השיר
+        
     title = clean_lines[0]
-    poem_body_lines = clean_lines[1:]
+    poem_body = clean_lines[1:]
     
     stanzas = []
     current_stanza = []
     
-    # חלוקה לבתים לפי נקודות בסוף משפט או הגעה ל-6 שורות
-    for line in poem_body_lines:
+    # 2. חלוקה דינמית לפי סימני פיסוק (איזון השיר)
+    for line in poem_body:
         current_stanza.append(line)
         
-        # תנאי סגירת בית: סוף משפט (נקודה/סימן קריאה) או בית שהגיע ל-6 שורות
-        if line.endswith(".") or line.endswith("!") or line.endswith("?") or len(current_stanza) >= 6:
+        # בדיקה במה השורה מסתיימת (מתעלמים מרווחים בסוף)
+        ends_with_punctuation = line.endswith(".") or line.endswith(";") or line.endswith("!") or line.endswith("?")
+        
+        # תנאי סגירת בית:
+        # א) זיהינו סימן פיסוק חזק המעיד על סוף בית במקור
+        # ב) או שהגענו לרשת ביטחון של 6 שורות (כדי שלא יווצרו בתים ארוכים מדי)
+        if ends_with_punctuation or len(current_stanza) >= 6:
             stanzas.append(current_stanza)
             current_stanza = []
             
-    # אם נשארו שורות בסוף, נכניס אותן כבית האחרון
+    # הוספת השורות האחרונות שנותרו (אם ישנן)
     if current_stanza:
         stanzas.append(current_stanza)
         
-    return title, stanzas
+    # 3. בקרת איכות: מניעת בתים "יתומים"
+    # אם בטעות נוצר בית של שורה אחת בסוף, נמזג אותו לבית שלפניו כדי לשמור על המבנה
+    fixed_stanzas = []
+    for stanza in stanzas:
+        if len(stanza) == 1 and fixed_stanzas:
+            fixed_stanzas[-1].extend(stanza)
+        else:
+            fixed_stanzas.append(stanza)
+            
+    return title, fixed_stanzas
 
-# קריאת כל קבצי ה-JSON מתיקיית המקור
+# לולאת הרצה על כל הקבצים
 files = [f for f in os.listdir(SOURCE_FOLDER) if f.endswith(".json")]
-print(f"מזהה {len(files)} קבצים בתיקיית '{SOURCE_FOLDER}'... מתחיל בעיבוד...\n")
-
-processed_count = 0
+print(f"מעבד {len(files)} קבצים מתיקיית '{SOURCE_FOLDER}' באלגוריתם פיסוק מאוזן...\n")
 
 for file_name in files:
     source_path = os.path.join(SOURCE_FOLDER, file_name)
-    
     try:
-        # 1. קריאת קובץ המקור
         with open(source_path, "r", encoding="utf-8") as f:
             original_data = json.load(f)
             
-        # חילוץ הטקסט הגולמי (תומך גם אם המפתח הוא 'text' וגם אם המבנה פנימי)
         full_text = original_data.get("text", "")
         if not full_text and "row" in original_data:
             full_text = original_data["row"].get("text", "")
             
         if not full_text:
-            print(f"⏩ מדלג על {file_name} - לא נמצא טקסט בפנים.")
             continue
             
-        # 2. הרצת פונקציית החלוקה החכמה לבתים
-        title, stanzas = parse_text_to_stanzas(full_text)
+        title, stanzas = parse_text_to_stanzas_balanced(full_text)
         
-        # 3. בניית מבנה ה-JSON החדש והנקי
         parsed_data = {
             "row_index": original_data.get("row_index", original_data.get("row_idx")),
             "title": title,
@@ -89,15 +90,12 @@ for file_name in files:
             "stanzas": stanzas
         }
         
-        # 4. שמירה בתיקיית היעד החדשה
         output_path = os.path.join(OUTPUT_FOLDER, file_name)
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(parsed_data, f, ensure_ascii=False, indent=2)
             
-        processed_count += 1
-        print(f"✓ {file_name} פוצל בהצלחה: '{title}' ({len(stanzas)} בתים)")
-
+        print(f"✓ {file_name} פוצל בצורה מאוזנת: '{title}' ({len(stanzas)} בתים)")
     except Exception as e:
-        print(f"✗ שגיאה בעיבוד הקובץ {file_name}: {e}")
+        print(f"✗ שגיאה ב-{file_name}: {e}")
 
-print(f"\n=== הסתיים! {processed_count} קבצים פוצלו לבתים ונשמרו בתיקייה '{OUTPUT_FOLDER}'. ===")
+print(f"\n=== העבודה הסתיימה! הקבצים המאוזנים נשמרו בתיקייה '{OUTPUT_FOLDER}' ===")
