@@ -3,12 +3,12 @@ import json
 import re
 
 # ייבוא המחלקות הקיימות מהקבצים שלך
-from rhyme_checker import RhymeChecker
-from stress_detector import StressDetector
+from .rhyme_checker import RhymeChecker
+from .stress_detector import StressDetector
 
 # הגדרת נתיבים
-SOURCE_FOLDER = r"C:\Users\user\ProjectAI\dataset\poem_parsed_sort"
-OUTPUT_DATASET_FILE = r"C:\Users\user\ProjectAI\dataset\semi_automatic_dataset.json"
+SOURCE_FOLDER = r"C:\Users\user\ProjectAI\target\dataset\poem_parsed_sort"
+OUTPUT_DATASET_FILE = r"C:\Users\user\ProjectAI\target\dataset\semi_automatic_dataset.json"
 
 HEBREW_DIACRITICS = re.compile(r'[\u0591-\u05C7]')
 
