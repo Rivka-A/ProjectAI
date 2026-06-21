@@ -103,20 +103,30 @@ class RhymeChecker:
             # בדיקת התאמה לתבנית א-א-ב-ב (שורה 1 עם 2, שורה 3 עם 4)
             score_aabb = (1 if line_keys[0] == line_keys[1] else 0) + (1 if line_keys[2] == line_keys[3] else 0)
             # בדיקת התאמה לתבנית א-ב-א-ב (שורה 1 עם 3, שורה 2 עם 4)
+            score_abba=(1 if line_keys[0]==line_keys[3] else 0) + (1 if line_keys[1]==line_keys[2] else 0)
             score_abab = (1 if line_keys[0] == line_keys[2] else 0) + (1 if line_keys[1] == line_keys[3] else 0)
-            score_aaaa= (1 if line_keys[0] == line_keys[1] == line_keys[2] == line_keys[3] else 0)  
-            if score_aaaa == 2:
+            score_aaa= (1 if line_keys[0] == line_keys[1] == line_keys[2] else 0) + (1 if line_keys[0]== line_keys[1] == line_keys[2] == line_keys[3] else 0)
+
+            if score_aaa == 1:
+                pattern_name = "א-א-א (חריזה פיוטית)"
+                expected_pairs = [(0, 1), (1, 2)]
+            elif score_aaa == 2:
                 pattern_name = "א-א-א-א (חריזה מושלמת)"
                 expected_pairs = [(0, 1), (2, 3)]
             elif score_aabb >= score_abab:
                 pattern_name = "א-א-ב-ב (חריזה צמודה)"
                 expected_pairs = [(0, 1), (2, 3)]
+            elif score_abab ==2:
+                pattern_name = "א-ב-א-ב (חריזה מסורגת)"
+                expected_pairs = [(0, 2), (1, 3)]
+            elif score_abba ==2:
+                pattern_name = "א-ב-ב-א (חריזה מסורגת)"
+                expected_pairs = [(0, 3), (1, 2)]
             else:
                 pattern_name = "א-ב-א-ב (חריזה מסורגת)"
                 expected_pairs = [(0, 1), (2, 3)] # נגדיר את הציפייה לפי המיקומים (0 עם 2, 1 עם 3)
                 expected_pairs = [(0, 2), (1, 3)]
         else:
-            # ברירת מחדל לבתים בגדלים אחרים: משווים כל שורה קודמת
             pattern_name = "חריזה חופשית / אחר"
             for i in range(num_lines - 1):
                 expected_pairs.append((i, i + 1))
