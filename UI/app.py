@@ -8,7 +8,7 @@ from pipeline import process_and_fix_poem_pipeline
 
 st.set_page_config(page_title="מתקן השירים האוטומטי", layout="centered")
 st.title("✨ מתקן השירים האוטומטי")
-st.write("הדביקי שיר חופשי. ה-Core ינתח חריזה, ה-Target (דיקטא) יתקן, והכול יתעדכן דינמית.")
+st.write("מודל לניתוח ותיקון שירים.")
 
 # אתחול משתני ה-Session State במידה ואינם קיימים
 if "suggestion_index" not in st.session_state:

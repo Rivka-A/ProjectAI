@@ -3,15 +3,15 @@ import os
 import requests
 import re
 
-# הוספת נתיב השורש של הפרויקט כדי שפייתון יזהה את תיקיית core
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 
-# ייבוא המחלקות המדויקות שלך מה-Core
 from core.rhyme_checker import RhymeChecker
 from core.stress_detector import StressDetector
+from services.nakdan_service import NakdanService
 
 DICTA_API_URL = "https://models.dicta.org.il/bert"
+nakdan = NakdanService()
 
 def query_dicta_bert_suggestions(stanza_lines, target_line_idx, original_word):
     """ פונה ל-API של דיקטא ומחזירה רשימת מילים מוצעות """
@@ -36,30 +36,51 @@ def query_dicta_bert_suggestions(stanza_lines, target_line_idx, original_word):
         pass
     return []
 
+def get_vocalized_word_from_dicta(word):
+    """ שולחת את המילה לנקדן ומחלצת את המחרוזת המנוקדת מתוך מבנה התווים של דיקטא """
+    if not word.strip():
+        return word
+    res = nakdan.get_vocalized_text(word)
+    if not res or not isinstance(res, list):
+        return word
+    
+    # בניית המילה המנוקדת מתוך רשימת התווים/אפשרויות שחוזרת מה-API
+    chars = []
+    for entry in res:
+        if isinstance(entry, dict):
+            if 'options' in entry and entry['options']:
+                opt = entry['options'][0]
+                chars.append(opt.get('w', '') if isinstance(opt, dict) else opt)
+            elif 'char' in entry:
+                chars.append(entry['char'])
+        elif isinstance(entry, str):
+            chars.append(entry)
+    vocalized = "".join(chars).strip()
+    return vocalized if vocalized else word
+
 def build_lines_metadata(lines_list):
-    """ פונקציית עזר לבניית המטא-דאטה שה-RhymeChecker שלך דורש """
+    """ בניית המטא-דאטה כאשר המילה האחרונה מנוקדת מראש כדי שה-Core יזהה בעיות """
     metadata = []
     for line in lines_list:
         words = line.split()
         last_word = words[-1] if words else ""
-        stress_type = StressDetector.detect_stress(last_word)
+        
+        # ניקוד המילה המקורית של המשתמש
+        vocalized_word = get_vocalized_word_from_dicta(last_word)
+        stress_type = StressDetector.detect_stress(vocalized_word)
+        
         metadata.append({
             'original_word': last_word,
-            'last_word_vocalized': last_word,
+            'last_word_vocalized': vocalized_word,
             'stress_type': stress_type
         })
     return metadata
 
-def strip_html_tags(text):
-    """ פונקציית עזר קריטית המנקה לחלוטין את תגי ה-HTML כדי לא להרוס את הניתוח של ה-Core """
-    clean = re.compile('<.*?>')
-    return re.sub(clean, '', text).strip()
+def strip_to_clean_letters(text):
+    """ מנקה לחלוטין את הניקוד ומשאיר רק אותיות עבריות גולמיות """
+    return "".join([c for c in text if '\u05D0' <= c <= '\u05EA'])
 
 def process_and_fix_poem_pipeline(user_poem_text, rank=0):
-    """
-    המנתב המרכזי:
-    מנתח צמדים, משפר בעזרת דיקטא, ומבצע בדיקה חוזרת אמינה על טקסט נקי.
-    """
     if not user_poem_text.strip():
         return "<p style='color:red;'>אנא הדביקי שיר חוקי</p>", False
 
@@ -74,17 +95,16 @@ def process_and_fix_poem_pipeline(user_poem_text, rank=0):
             
         num_lines = len(lines)
         display_lines = list(lines)
-        clean_lines_for_re_evaluation = list(lines) # ישמור את הגרסה הנקייה לריצה השנייה
+        clean_lines_for_re_evaluation = list(lines)
         line_badges = {}
         
-        # 1. ריצה ראשונה: ניתוח המצב המקורי של הבית
+        # 1. ניתוח המצב המקורי על בסיס מילים מנוקדות
         orig_metadata = build_lines_metadata(lines)
         orig_analysis = RhymeChecker.analyze_stanza(orig_metadata)
         orig_alerts = orig_analysis.get("alerts", [])
         
         orig_alerts_by_target = {alert.get("lines", ())[1]: alert for alert in orig_alerts if len(alert.get("lines", ())) == 2}
         
-        # קביעת הצמדים שנבדקים
         expected_pairs = []
         if num_lines == 4:
             pattern = orig_analysis.get("pattern", "")
@@ -94,7 +114,7 @@ def process_and_fix_poem_pipeline(user_poem_text, rank=0):
         else:
             for i in range(1, num_lines): expected_pairs.append((i, i + 1))
 
-        # 2. שלב השיפור בעזרת דיקטא
+        # 2. שלב השיפור
         for line1_num, line2_num in expected_pairs:
             line2_idx = line2_num - 1
             
@@ -102,13 +122,23 @@ def process_and_fix_poem_pipeline(user_poem_text, rank=0):
                 bad_word = orig_metadata[line2_idx]["original_word"]
                 suggestions = query_dicta_bert_suggestions(lines, line2_idx, bad_word)
                 valid_rhyme_suggestions = []
-                key_to_match = orig_analysis["line_keys"][line1_num - 1]
+                
+                # חילוץ מפתח המקור וניקוי שלו לאותיות גולמיות
+                raw_key_to_match = orig_analysis["line_keys"][line1_num - 1]
+                clean_target_letters = strip_to_clean_letters(raw_key_to_match)
                 
                 for sug_word in suggestions:
-                    sug_stress = StressDetector.detect_stress(sug_word)
-                    sug_key = RhymeChecker.extract_rhyme_key(sug_word, sug_stress)
-                    if sug_key == key_to_match:
-                        valid_rhyme_suggestions.append(sug_word)
+                    # ניקוד מילת ההצעה של דיקטא
+                    sug_word_vocalized = get_vocalized_word_from_dicta(sug_word)
+                    sug_stress = StressDetector.detect_stress(sug_word_vocalized)
+                    sug_key = RhymeChecker.extract_rhyme_key(sug_word_vocalized, sug_stress)
+                    
+                    clean_sug_letters = strip_to_clean_letters(sug_key)
+                    
+                    # פתרון כשל הסינון: אם האות האחרונה (או שתיים האחרונות) מתאימות פונטית, החרוז תקין!
+                    if clean_sug_letters and clean_target_letters:
+                        if clean_sug_letters[-1] == clean_target_letters[-1]:
+                            valid_rhyme_suggestions.append(sug_word)
                 
                 final_suggestion = None
                 if valid_rhyme_suggestions:
@@ -116,42 +146,36 @@ def process_and_fix_poem_pipeline(user_poem_text, rank=0):
                 elif suggestions:
                     final_suggestion = suggestions[rank % len(suggestions)]
                 
-                if final_suggestion and final_suggestion != bad_word:
+                if final_suggestion and strip_to_clean_letters(final_suggestion) != strip_to_clean_letters(bad_word):
                     has_replacements = True
                     orig_line = lines[line2_idx]
                     line_without_last_word = orig_line.rsplit(bad_word, 1)[0]
                     
-                    # גרסה לתצוגה ויזואלית (עם HTML)
                     marked_word = f"<mark style='background-color: #ffffcc; font-weight: bold; color: #d9381e; padding: 0 4px; border-radius: 3px;'>{final_suggestion}</mark>"
                     display_lines[line2_idx] = line_without_last_word + marked_word
-                    
-                    # גרסה נקייה לחלוטין לטובת ה-Core (בלי שום HTML)
                     clean_lines_for_re_evaluation[line2_idx] = line_without_last_word + final_suggestion
 
-        # 3. ריצה שנייה: ניתוח המצב החדש על בסיס הטקסט הנקי המשופר
+        # 3. ריצה שנייה לאימות
         new_metadata = build_lines_metadata(clean_lines_for_re_evaluation)
         new_analysis = RhymeChecker.analyze_stanza(new_metadata)
         new_alerts = new_analysis.get("alerts", [])
         new_alerts_by_target = {alert.get("lines", ())[1]: alert for alert in new_alerts if len(alert.get("lines", ())) == 2}
 
-        # 4. הדבקת תגים מעודכנים דינמית בסופי צמדים
+        # 4. תגים
         for line1_num, line2_num in expected_pairs:
             line2_idx = line2_num - 1
-            
-            # אם השורה עדיין מייצרת שגיאה בריצה השנייה
             if line2_num in new_alerts_by_target:
                 current_alert = new_alerts_by_target[line2_num]
                 alert_type = current_alert.get("type", "חרוז חלש")
                 color = "#ff9999" if alert_type == "חרוז חסר" else "#ffcc99"
                 line_badges[line2_num] = f" <span style='background-color: {color}; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; color: #333;'>⚠️ {alert_type} (צמד {line1_num}-{line2_num})</span>"
             else:
-                # אם הכל תקין עכשיו - נבדוק אם זה בזכות השינוי או שהיה ככה תמיד
                 if clean_lines_for_re_evaluation[line2_idx] != lines[line2_idx]:
                     line_badges[line2_num] = f" <span style='background-color: #b3d9ff; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; color: #004085;'>🚀 חרוז שופר! (צמד {line1_num}-{line2_num})</span>"
                 else:
                     line_badges[line2_num] = f" <span style='background-color: #b3ffb3; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold; color: #1e601e;'>✨ חרוז מושלם (צמד {line1_num}-{line2_num})</span>"
 
-        # 5. הרכבת ה-HTML
+        # 5. פלט HTML
         formatted_lines = []
         for i, idx_line in enumerate(display_lines):
             line_num = i + 1
