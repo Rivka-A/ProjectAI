@@ -1,347 +1,182 @@
-# import re
-
-# class RhymeChecker:
-#     @staticmethod
-#     def normalize_hebrew_vowels(vocalized_word):
-#         """
-#         פונקציית עזר שמנרמלת תנועות זהות פונטית בעברית מודרנית
-#         ומסירה סימנים שאינם משפיעים על צליל החרוז (כמו דגש).
-#         """
-#         # הגדרת תווי יוניקוד
-#         sheva = '\u05B0'
-#         hatef_segol = '\u05B1'
-#         hatef_patah = '\u05B2'
-#         hatef_qamats = '\u05B3'
-#         hiriq = '\u05B4'
-#         tsere = '\u05B5'
-#         segol = '\u05B6'
-#         patah = '\u05B7'
-#         qamats = '\u05B8'
-#         holam = '\u05B9'
-#         qumuts = '\u05BB'
-#         dagesh = '\u05BC'  # תו היוניקוד של נקודת הדגש/מפיק פנימי
-        
-#         normalized = vocalized_word
-        
-#         # 1. ניקוי סימנים מפריעים
-#         normalized = normalized.replace("|", "")
-#         normalized = normalized.replace(dagesh, "")  # הסרת הדגש מהמילה
-        
-#         # 2. נרמול תנועות זהות פונטית
-#         normalized = normalized.replace(hatef_patah, patah)
-#         normalized = normalized.replace(hatef_segol, segol)
-#         normalized = normalized.replace(qamats, patah)
-#         normalized = normalized.replace(tsere, segol)
-#         normalized = normalized.replace(hatef_qamats, holam)
-        
-#         return normalized
-
-#     @classmethod
-#     def extract_rhyme_key(cls, vocalized_word, stress_type):
-#         """
-#         הפונקציה המרכזית המעודכנת: מחלצת את מפתח החרוז המדויק.
-#         """
-#         # 1. נרמול התנועות במילה
-#         clean_word = cls.normalize_hebrew_vowels(vocalized_word)
-        
-#         # רשימת כל סימני הניקוד (התנועות) בעברית
-#         vowels = [
-#             '\u05B0', '\u05B4', '\u05B5', '\u05B6', 
-#             '\u05B7', '\u05B8', '\u05B9', '\u05BB',
-#             '\u05C7'
-#         ]
-        
-#         # מציאת המיקומים של כל התנועות במילה
-#         vowel_indices = [i for i, char in enumerate(clean_word) if char in vowels]
-        
-#         if not vowel_indices:
-#             return clean_word[-2:]
-            
-#         if stress_type == "מלרע":
-#             # מלרע: החרוז מתחיל מהתנועה האחרונה.
-#             # נחתוך בדיוק ממיקום התנועה האחרונה
-#             last_vowel_idx = vowel_indices[-1]
-#             return clean_word[last_vowel_idx:]
-            
-#         elif stress_type == "מלעיל":
-#             # מלעיל: החרוז מתחיל מהתנועה הלפני-אחרונה.
-#             if len(vowel_indices) >= 2:
-#                 target_vowel_idx = vowel_indices[-2]
-#             else:
-#                 target_vowel_idx = vowel_indices[0]
-            
-#             # חותכים בדיוק מהתנועה המוטעמת הלפני-אחרונה ועד סוף המילה
-#             return clean_word[target_vowel_idx:]
-            
-#         return clean_word
-    
-#     @classmethod
-#     def analyze_stanza(cls, lines_with_metadata):
-#         """
-#         פונקציה המקבלת רשימה של שורות הבית, כאשר לכל שורה יש את:
-#         הטקסט המקורי, המילה האחרונה המנוקדת, וסוג ההטעמה שלה.
-#         היא מזהה את תבנית החריזה ומחזירה דוח התרעות.
-#         """
-#         # 1. חילוץ מפתחות החרוז לכל השורות בבית
-#         line_keys = []
-#         for line in lines_with_metadata:
-#             vocalized_word = line['last_word_vocalized']
-#             stress_type = line['stress_type']
-#             rhyme_key = cls.extract_rhyme_key(vocalized_word, stress_type)
-#             line_keys.append(rhyme_key)
-            
-#         num_lines = len(line_keys)
-#         if num_lines < 2:
-#             return {"pattern": "לא מוגדר", "alerts": ["הבית קצר מדי מכדי לנתח חריזה"]}
-
-#         # 2. זיהוי אוטומטי של תבנית החריזה (עבור בתים של 4 שורות)
-#         # נבדוק שתי תבניות נפוצות: א-א-ב-ב או א-ב-א-ב
-#         pattern_name = "לא מזוהה"
-#         expected_pairs = [] # הזוגות שאמורים להתחרז לפי התבנית
-        
-#         if num_lines == 4:
-#             # בדיקת התאמה לתבנית א-א-ב-ב (שורה 1 עם 2, שורה 3 עם 4)
-#             score_aabb = (1 if line_keys[0] == line_keys[1] else 0) + (1 if line_keys[2] == line_keys[3] else 0)
-#             # בדיקת התאמה לתבנית א-ב-א-ב (שורה 1 עם 3, שורה 2 עם 4)
-#             score_abba=(1 if line_keys[0]==line_keys[3] else 0) + (1 if line_keys[1]==line_keys[2] else 0)
-#             score_abab = (1 if line_keys[0] == line_keys[2] else 0) + (1 if line_keys[1] == line_keys[3] else 0)
-#             score_aaa= (1 if line_keys[0] == line_keys[1] == line_keys[2] else 0) + (1 if line_keys[0]== line_keys[1] == line_keys[2] == line_keys[3] else 0)
-
-#             if score_aaa == 1:
-#                 pattern_name = "א-א-א (חריזה פיוטית)"
-#                 expected_pairs = [(0, 1), (1, 2)]
-#             elif score_aaa == 2:
-#                 pattern_name = "א-א-א-א (חריזה מושלמת)"
-#                 expected_pairs = [(0, 1), (2, 3)]
-#             elif score_aabb >= score_abab:
-#                 pattern_name = "א-א-ב-ב (חריזה צמודה)"
-#                 expected_pairs = [(0, 1), (2, 3)]
-#             elif score_abab ==2:
-#                 pattern_name = "א-ב-א-ב (חריזה מסורגת)"
-#                 expected_pairs = [(0, 2), (1, 3)]
-#             else:
-#                 pattern_name = "א-ב-א-ב (חריזה מסורגת)"
-#                 expected_pairs = [(0, 1), (2, 3)] # נגדיר את הציפייה לפי המיקומים (0 עם 2, 1 עם 3)
-#                 expected_pairs = [(0, 2), (1, 3)]
-#         else:
-#             pattern_name = "חריזה חופשית / אחר"
-#             for i in range(num_lines - 1):
-#                 expected_pairs.append((i, i + 1))
-
-#         # 3. מנגנון הפקת התרעות (חיפוש חרוזים חסרים או חלשים)
-#         alerts = []
-#         for idx1, idx2 in expected_pairs:
-#             key1 = line_keys[idx1]
-#             key2 = line_keys[idx2]
-            
-#             # אם המפתחות זהים לחלוטין - החרוז מושלם!
-#             if key1 == key2:
-#                 continue
-                
-#             # הגדרת "חרוז חלש": האותיות האחרונות זהות, אך התנועה המוטעמת שונה
-#             # (למשל: סוּס ו-מָטוֹס מסתיימים שניהם באות ס', אך התנועה שונה)
-#             raw_word1 = lines_with_metadata[idx1]['original_word']
-#             raw_word2 = lines_with_metadata[idx2]['original_word']
-            
-#             if key1[-1] == key2[-1]:
-#                 alerts.append({
-#                     "type": "חרוז חלש",
-#                     "lines": (idx1 + 1, idx2 + 1),
-#                     "message": f"שורה {idx1 + 1} ({raw_word1}) ושורה {idx2 + 1} ({raw_word2}) מסתיימות באות זהה אך התנועות שונות (חרוז חלש)."
-#                 })
-#             else:
-#                 # חרוז חסר לחלוטין - המפתחות שונים לגמרי במקום שבו התבנית מכתיבה חריזה
-#                 alerts.append({
-#                     "type": "חרוז חסר",
-#                     "lines": (idx1 + 1, idx2 + 1),
-#                     "message": f"לפי תבנית {pattern_name}, שורה {idx1 + 1} ({raw_word1}) ושורה {idx2 + 1} ({raw_word2}) אמורות להתחרז, אך אין ביניהן חריזה."
-#                 })
-
-#         return {
-#             "pattern": pattern_name,
-#             "alerts": alerts,
-#             "line_keys": line_keys
-#         }
-
-import re
-
 class RhymeChecker:
-    @staticmethod
-    def normalize_hebrew_vowels(vocalized_word):
-        """
-        פונקציית עזר שמנרמלת תנועות זהות פונטית בעברית מודרנית
-        ומסירה סימנים שאינם משפיעים על צליל החרוז (כמו דגש).
-        """
-        sheva = '\u05B0'
-        hatef_segol = '\u05B1'
-        hatef_patah = '\u05B2'
-        hatef_qamats = '\u05B3'
-        hiriq = '\u05B4'
-        tsere = '\u05B5'
-        segol = '\u05B6'
-        patah = '\u05B7'
-        qamats = '\u05B8'
-        holam = '\u05B9'
-        qumuts = '\u05BB'
-        dagesh = '\u05BC'
-        
-        normalized = vocalized_word
-        
-        # 1. ניקוי סימנים מפריעים
-        normalized = normalized.replace("|", "")
-        normalized = normalized.replace(dagesh, "")
-        
-        # 2. נרמול תנועות זהות פונטית
-        normalized = normalized.replace(hatef_patah, patah)
-        normalized = normalized.replace(hatef_segol, segol)
-        normalized = normalized.replace(qamats, patah)
-        normalized = normalized.replace(tsere, segol)
-        normalized = normalized.replace(hatef_qamats, holam)
-        
-        return normalized
 
-    @staticmethod
-    def apply_phonetic_replacements(vocalized_text):
+    SHEVA   = '\u05B0'
+    HIRIQ   = '\u05B4'
+    TSERE   = '\u05B5'
+    SEGOL   = '\u05B6'
+    PATAH   = '\u05B7'
+    QAMATS  = '\u05B8'
+    HOLAM   = '\u05B9'
+    QUBUTS  = '\u05BB'
+    DAGESH  = '\u05BC'
+    HATEF_P = '\u05B2'
+    HATEF_S = '\u05B1'
+    HATEF_Q = '\u05B3'
+
+    VOWELS = {'\u05B0','\u05B4','\u05B5','\u05B6','\u05B7','\u05B8','\u05B9','\u05BB'}
+
+    @classmethod
+    def _normalize(cls, word):
+        """ניקוי דגש, מפרידים, ונרמול תנועות שוות-ערך."""
+        w = word.replace('|', '').replace(cls.DAGESH, '')
+        w = w.replace(cls.HATEF_P, cls.PATAH)
+        w = w.replace(cls.HATEF_S, cls.SEGOL)
+        w = w.replace(cls.HATEF_Q, cls.HOLAM)
+        w = w.replace(cls.QAMATS,  cls.PATAH)
+        w = w.replace(cls.TSERE,   cls.SEGOL)
+        return w
+
+    @classmethod
+    def _phonetic_consonants(cls, text):
+        """החלפת עיצורים הנשמעים זהה."""
+        MAP = {'\u05D8':'\u05EA', '\u05DB':'\u05D7', '\u05E7':'\u05DB', '\u05E1':'\u05E9', '\u05D0':'\u05E2'}
+        return ''.join(MAP.get(c, c) for c in text)
+
+    @classmethod
+    def _absorb_matres(cls, word):
         """
-        הפונקציה הקריטית: מחליפה רק את העיצורים הגולמיים שנשמעות זהה,
-        בלי לפגוע או למחוק את סימני הניקוד הצמודים אליהם!
+        מסיר אמות קריאה נחות (א/ה/ו/י שאחרי תנועה ולפניהן אין ניקוד).
+        כך "מָצָא" ו"מְנוּחָה" יקבלו אותה תנועה סופית.
         """
-        # מילון החלפות של אותיות עיצוריות בלבד
-        phonetic_map = {
-            'ט': 'ת',  # מִבְטָח -> מִבְתָּח
-            'כ': 'ח',  # כ' רפה ו-ח' 
-            'ק': 'כ',  # ק' ו-כ' דגושה
-            'ס': 'ש',  # ס' ו-ש' שמאלית
-            'א': 'ע',
-        }
-        
+        MATRES = {'\u05D0', '\u05D4', '\u05D5', '\u05D9'}
+        chars = list(word)
         result = []
-        for char in vocalized_text:
-            # אם התו הוא אות עיצורית שנמצאת במילון, נחליף אותה ונשמור על הניקוד שאחריה
-            if char in phonetic_map:
-                result.append(phonetic_map[char])
-            else:
-                result.append(char)
-                
-        return "".join(result)
+        i = 0
+        while i < len(chars):
+            c = chars[i]
+            if c in MATRES:
+                prev_is_vowel = result and result[-1] in cls.VOWELS
+                next_is_niqud = (i + 1 < len(chars)) and (chars[i+1] in cls.VOWELS)
+                if prev_is_vowel and not next_is_niqud:
+                    i += 1
+                    continue
+            result.append(c)
+            i += 1
+        return ''.join(result)
 
     @classmethod
     def extract_rhyme_key(cls, vocalized_word, stress_type):
         """
-        מחלץ את מפתח החרוז המדויק על בסיס מיקום ההטעמה,
-        תוך שמירה מלאה על הניקוד המקורי ונרמול פונטי ממוקד.
+        מחלץ את מפתח החרוז: העיצור הנושא + תנועה מוטעמת + כל מה שאחריה.
+        כך 'סָּע' ו-'רַע' יקבלו מפתחות שונים גם אם שניהם מסתיימים ב-ע.
         """
-        # 1. נרמול תנועות בסיסי (קמץ לפתח וכו')
-        clean_word = cls.normalize_hebrew_vowels(vocalized_word)
-        
-        # רשימת תווי הניקוד בעברית
-        vowels = [
-            '\u05B0', '\u05B4', '\u05B5', '\u05B6', 
-            '\u05B7', '\u05B8', '\u05B9', '\u05BB',
-            '\u05C7'
-        ]
-        
-        vowel_indices = [i for i, char in enumerate(clean_word) if char in vowels]
-        
+        w = cls._normalize(vocalized_word)
+        w = cls._absorb_matres(w)
+        w = cls._phonetic_consonants(w)
+
+        vowel_indices = [i for i, c in enumerate(w) if c in cls.VOWELS]
         if not vowel_indices:
-            # אם אין ניקוד בכלל, נחזיר את 2 האותיות האחרונות כברירת מחדל
-            return cls.apply_phonetic_replacements(clean_word[-2:])
-            
-        # 2. חיתוך אזור החרוז בהתאם למיקום ההטעמה
-        if stress_type == "מלרע":
-            # מלרע: החרוז מתחיל מהתנועה האחרונה במילה
-            last_vowel_idx = vowel_indices[-1]
-            rhyme_zone = clean_word[last_vowel_idx:]
+            return w[-2:] if len(w) >= 2 else w
+
+        if stress_type == '\u05DE\u05DC\u05E8\u05E2':
+            stressed_vowel_pos = vowel_indices[-1]
         else:
-            # מלעיל: החרוז מתחיל מהתנועה הלפני-אחרונה
-            if len(vowel_indices) >= 2:
-                target_vowel_idx = vowel_indices[-2]
-            else:
-                target_vowel_idx = vowel_indices[0]
-            rhyme_zone = clean_word[target_vowel_idx:]
-            
-        # 3. החלת ההחלפה הפונטית על אזור החרוז המנוקד
-        # "בְטָח" יהפוך ל-"בְתָח" | "תָּח" יישאר "תָּח" -> שניהם יסתיימו ב-"תָח" מנוקד לחלוטין!
-        final_key = cls.apply_phonetic_replacements(rhyme_zone)
-        return final_key
-    
+            stressed_vowel_pos = vowel_indices[-2] if len(vowel_indices) >= 2 else vowel_indices[0]
+
+        # מוצאים את העיצור הנושא (האות שלפני התנועה המוטעמת)
+        cons_pos = stressed_vowel_pos - 1
+        while cons_pos >= 0 and w[cons_pos] in cls.VOWELS:
+            cons_pos -= 1
+
+        start = max(0, cons_pos)
+        return w[start:]
+
+    @classmethod
+    def rhyme_level(cls, key1, key2):
+        """
+        מחזיר רמת חרוז בין שני מפתחות.
+        כל מפתח = עיצור_נושא + תנועה + עיצורים_סופיים.
+        ההשוואה מבוססת על ההברה הסופית (תנועה + עיצורים אחריה) בלבד:
+          1 = חרוז מושלם (מפתחות זהים לחלוטין)
+          2 = הברה סופית זהה: תנועה זהה + עיצורים סופיים זהים (עיצור נושא יכול להשתנות)
+          3 = עיצורים סופיים זהים, תנועה שונה
+          4 = תנועה סופית זהה, עיצורים סופיים שונים
+          5 = אין חרוז
+        """
+        if key1 == key2:
+            return 1
+
+        IS_HEB = lambda c: '\u05D0' <= c <= '\u05EA'
+
+        def parse_key(key):
+            """מחזיר (last_vowel, consonants_after_last_vowel)"""
+            vpos = [i for i, c in enumerate(key) if c in cls.VOWELS]
+            if not vpos:
+                letters = [c for c in key if IS_HEB(c)]
+                return '', letters[-1] if letters else ''
+            lv = vpos[-1]
+            return key[lv], ''.join(c for c in key[lv+1:] if IS_HEB(c))
+
+        v1, ca1 = parse_key(key1)
+        v2, ca2 = parse_key(key2)
+
+        if v1 == v2 and ca1 == ca2:
+            return 2
+        if ca1 == ca2 and ca1 != '':
+            return 3
+        if v1 == v2 and v1 != '':
+            return 4
+        return 5
+
     @classmethod
     def analyze_stanza(cls, lines_with_metadata):
-        """
-        מזהה את תבנית החריזה ומפיקה דוח התרעות מדויק.
-        """
-        line_keys = []
-        for line in lines_with_metadata:
-            vocalized_word = line['last_word_vocalized']
-            stress_type = line['stress_type']
-            rhyme_key = cls.extract_rhyme_key(vocalized_word, stress_type)
-            line_keys.append(rhyme_key)
-            
+        """מזהה תבנית חריזה ומפיק דוח התרעות עם 5 רמות חרוז."""
+
+        LEVEL_TYPE = {
+            2: '\u05D7\u05E8\u05D5\u05D6 \u05D8\u05D5\u05D1',
+            3: '\u05E2\u05D9\u05E6\u05D5\u05E8 \u05DE\u05E9\u05D5\u05EA\u05E3',
+            4: '\u05EA\u05E0\u05D5\u05E2\u05D4 \u05DE\u05E9\u05D5\u05EA\u05E4\u05EA',
+            5: '\u05D7\u05E8\u05D5\u05D6 \u05D7\u05E1\u05E8',
+        }
+
+        line_keys = [
+            cls.extract_rhyme_key(l['last_word_vocalized'], l['stress_type'])
+            for l in lines_with_metadata
+        ]
+
         num_lines = len(line_keys)
         if num_lines < 2:
-            return {"pattern": "לא מוגדר", "alerts": ["הבית קצר מדי מכדי לנתח חריזה"]}
+            return {'pattern': '\u05DC\u05D0 \u05DE\u05D5\u05D2\u05D3\u05E8', 'alerts': ['\u05D4\u05D1\u05D9\u05EA \u05E7\u05E6\u05E8 \u05DE\u05D3\u05D9'], 'line_keys': line_keys}
 
-        pattern_name = "לא מזוהה"
         expected_pairs = []
-        
         if num_lines == 4:
-            score_aabb = (1 if line_keys[0] == line_keys[1] else 0) + (1 if line_keys[2] == line_keys[3] else 0)
-            score_abab = (1 if line_keys[0] == line_keys[2] else 0) + (1 if line_keys[1] == line_keys[3] else 0)
-            score_abba = (1 if line_keys[0] == line_keys[3] else 0) + (1 if line_keys[1] == line_keys[2] else 0)
-            
-            is_aaaa = (line_keys[0] == line_keys[1] == line_keys[2] == line_keys[3])
-            is_aaab = (line_keys[0] == line_keys[1] == line_keys[2]) and (line_keys[2] != line_keys[3])
+            is_aaaa = len(set(line_keys)) == 1
+            is_aaab = (line_keys[0] == line_keys[1] == line_keys[2]) and line_keys[2] != line_keys[3]
+            score_aabb = (line_keys[0]==line_keys[1]) + (line_keys[2]==line_keys[3])
+            score_abab = (line_keys[0]==line_keys[2]) + (line_keys[1]==line_keys[3])
+            score_abba = (line_keys[0]==line_keys[3]) + (line_keys[1]==line_keys[2])
 
             if is_aaaa:
-                pattern_name = "א-א-א-א (חריזה מלאה)"
-                expected_pairs = [(0, 1), (1, 2), (2, 3)]
+                pattern_name = '\u05D0-\u05D0-\u05D0-\u05D0 (\u05D7\u05E8\u05D9\u05D6\u05D4 \u05DE\u05DC\u05D0\u05D4)'
+                expected_pairs = [(0,1),(1,2),(2,3)]
             elif is_aaab:
-                pattern_name = "א-א-א-ב (חריזה פיוטית)"
-                expected_pairs = [(0, 1), (1, 2)]
-            elif score_abab >= 1 and score_abab >= score_aabb and score_abab >= score_abba:
-                pattern_name = "א-ב-א-ב (חריזה מסורגת)"
-                expected_pairs = [(0, 2), (1, 3)]
-            elif score_abba >= 1 and score_abba >= score_aabb and score_abba >= score_abab:
-                pattern_name = "א-ב-ב-א (חריזה חובקת)"
-                expected_pairs = [(0, 3), (1, 2)]
+                pattern_name = '\u05D0-\u05D0-\u05D0-\u05D1 (\u05D7\u05E8\u05D9\u05D6\u05D4 \u05E4\u05D9\u05D5\u05D8\u05D9\u05EA)'
+                expected_pairs = [(0,1),(1,2)]
+            elif score_abab >= score_aabb and score_abab >= score_abba:
+                pattern_name = '\u05D0-\u05D1-\u05D0-\u05D1 (\u05D7\u05E8\u05D9\u05D6\u05D4 \u05DE\u05E1\u05D5\u05E8\u05D2\u05EA)'
+                expected_pairs = [(0,2),(1,3)]
+            elif score_abba >= score_aabb:
+                pattern_name = '\u05D0-\u05D1-\u05D1-\u05D0 (\u05D7\u05E8\u05D9\u05D6\u05D4 \u05D7\u05D5\u05D1\u05E7\u05EA)'
+                expected_pairs = [(0,3),(1,2)]
             else:
-                pattern_name = "א-א-ב-ב (חריזה צמודה)"
-                expected_pairs = [(0, 1), (2, 3)]
+                pattern_name = '\u05D0-\u05D0-\u05D1-\u05D1 (\u05D7\u05E8\u05D9\u05D6\u05D4 \u05E6\u05DE\u05D5\u05D3\u05D4)'
+                expected_pairs = [(0,1),(2,3)]
         else:
-            pattern_name = "חריזה חופשית / אחר"
-            for i in range(num_lines - 1):
-                expected_pairs.append((i, i + 1))
+            pattern_name = '\u05D7\u05E8\u05D9\u05D6\u05D4 \u05D7\u05D5\u05E4\u05E9\u05D9\u05EA / \u05D0\u05D7\u05E8'
+            expected_pairs = [(i, i+1) for i in range(num_lines-1)]
 
         alerts = []
         for idx1, idx2 in expected_pairs:
-            key1 = line_keys[idx1]
-            key2 = line_keys[idx2]
-            
-            if key1 == key2:
+            level = cls.rhyme_level(line_keys[idx1], line_keys[idx2])
+            if level == 1:
                 continue
-                
-            raw_word1 = lines_with_metadata[idx1]['original_word']
-            raw_word2 = lines_with_metadata[idx2]['original_word']
-            
-            # ניקוי הניקוד רק לצורך בדיקת ה"חרוז החלש" (אות אחרונה זהה פונטית)
-            clean_letters1 = "".join([c for c in key1 if '\u05D0' <= c <= '\u05EA'])
-            clean_letters2 = "".join([c for c in key2 if '\u05D0' <= c <= '\u05EA'])
-            
-            if clean_letters1 and clean_letters2 and clean_letters1[-1] == clean_letters2[-1]:
-                alerts.append({
-                    "type": "חרוז חלש",
-                    "lines": (idx1 + 1, idx2 + 1),
-                    "message": f"שורה {idx1 + 1} ({raw_word1}) ושורה {idx2 + 1} ({raw_word2}) מסתיימות בצליל עיצורי זהה אך התנועות שונות."
-                })
-            else:
-                alerts.append({
-                    "type": "חרוז חסר",
-                    "lines": (idx1 + 1, idx2 + 1),
-                    "message": f"לפי תבנית {pattern_name}, שורה {idx1 + 1} ({raw_word1}) ושורה {idx2 + 1} ({raw_word2}) אמורות להתחרז, אך אין ביניהן חריזה."
-                })
+            w1 = lines_with_metadata[idx1]['original_word']
+            w2 = lines_with_metadata[idx2]['original_word']
+            alerts.append({
+                'type': LEVEL_TYPE[level],
+                'level': level,
+                'lines': (idx1+1, idx2+1),
+                'message': f'\u05E9\u05D5\u05E8\u05D4 {idx1+1} ({w1}) \u05D5\u05E9\u05D5\u05E8\u05D4 {idx2+1} ({w2}): {LEVEL_TYPE[level]}.'
+            })
 
-        return {
-            "pattern": pattern_name,
-            "alerts": alerts,
-            "line_keys": line_keys
-        }
+        return {'pattern': pattern_name, 'alerts': alerts, 'line_keys': line_keys}
