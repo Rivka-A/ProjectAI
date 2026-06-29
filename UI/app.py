@@ -6,6 +6,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline import analyze_poem_and_get_suggestions, render_poem_html
 from services.feedback_service import save_feedback, REASON_LABELS
+from services.learning_service import analyze_and_save
 
 st.set_page_config(page_title="מתקן השירים האוטומטי", layout="centered")
 st.title("✨ מתקן השירים האוטומטי")
@@ -84,7 +85,13 @@ if reason_key == "other":
 
 if st.button("✅ אשרי ועברי"):
     for r in st.session_state.replacements_info:
-        save_feedback(r["original_word"], r["suggested_word"], reason_key, custom_text)
+        save_feedback(
+            r["original_word"], r["suggested_word"], reason_key, custom_text,
+            target_key=r.get("target_key", ""),
+            suggested_key=r.get("suggested_key", ""),
+            rhyme_level=r.get("rhyme_level", 0),
+        )
+    analyze_and_save()  # עדכון כללי הלמידה
 
     if reason_key == "approved":
         st.success("מעולה! התיקון נשמר.")

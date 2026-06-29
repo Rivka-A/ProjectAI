@@ -4,3 +4,8 @@
 {"ts": "2026-06-29T12:21:59.404082", "original": "עזרו,", "suggested": "שלום", "reason": "worse_rhyme", "custom": ""}
 {"ts": "2026-06-29T12:23:03.004886", "original": "עזרו,", "suggested": "שלטון", "reason": "worse_rhyme", "custom": ""}
 {"ts": "2026-06-29T12:50:47.209618", "original": "הדרך", "suggested": "הוא", "reason": "other", "custom": "החרוז לא נכון, ההקשר לשורה לא נכון, השורה לא נכונה תחבירית"}
+{"ts": "2026-06-29T13:03:31.702191", "original": "יראה", "suggested": "התורה", "reason": "bad_context", "custom": "", "target_key": "נַ", "suggested_key": "רַ", "rhyme_level": 2}
+{"ts": "2026-06-29T13:21:34.369815", "original": "יראה", "suggested": "תורה", "reason": "bad_context", "custom": "", "target_key": "נַ", "suggested_key": "רַ", "rhyme_level": 2}
+{"ts": "2026-06-29T13:23:47.462711", "original": "יראה", "suggested": "קדושה", "reason": "worse_rhyme", "custom": "", "target_key": "נַ", "suggested_key": "ַׁ", "rhyme_level": 2}
+{"ts": "2026-06-29T13:40:11.169078", "original": "יראה", "suggested": "התפילה", "reason": "worse_rhyme", "custom": "", "target_key": "נַ", "suggested_key": "לַ", "rhyme_level": 2}
+{"ts": "2026-06-29T14:12:50.497458", "original": "כחולמים", "suggested": "הימים", "reason": "worse_rhyme", "custom": "", "target_key": [["y", "A"], ["m", "I"], ["y", ""], ["m", ""]], "suggested_key": [["y", "A"], ["m", "I"], ["y", ""], ["m", ""]], "rhyme_level": 1}

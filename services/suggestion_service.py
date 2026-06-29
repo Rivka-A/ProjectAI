@@ -7,6 +7,7 @@ from core.rhyme_checker import RhymeChecker
 from core.stress_detector import StressDetector
 from services.nakdan_service import NakdanService
 from services.bert_service import get_fill_mask_suggestions
+from services.learning_service import get_min_acceptable_level, is_bad_pair
 
 _nakdan = NakdanService()
 
@@ -104,7 +105,11 @@ def build_candidates(
     raw = get_fill_mask_suggestions(lines, line2_idx, bad_word)
     bad_letters = _letters_only(bad_word)
 
-    buckets: dict[int, list[str]] = {1: [], 2: [], 3: []}
+    # רמה מינימלית שנלמדה מהמשובים — אבל לא להחמיר מעבר לרמת המקור
+    learned_min_level = get_min_acceptable_level()
+    effective_max_level = min(orig_level, learned_min_level) if orig_level < 5 else learned_min_level
+
+    buckets: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: [], 5: []}
     seen: set[str] = set()
 
     for word in raw:
@@ -118,11 +123,14 @@ def build_candidates(
         key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
         level = RhymeChecker.rhyme_level(target_key, key)
 
-        # קבל רק אם לא גרוע מהמקור
-        if level <= orig_level:
+        # סנן זוגות שנלמדו כבעייתיים
+        if is_bad_pair(str(target_key), str(key)):
+            continue
+
+        if level <= effective_max_level:
             buckets.setdefault(level, []).append(word)
 
-    combined = buckets.get(1, []) + buckets.get(2, []) + buckets.get(3, [])
+    combined = buckets.get(1, []) + buckets.get(2, []) + buckets.get(3, []) + buckets.get(4, [])
 
     # אם אין מספיק — הוסף "שאר" שעדיין לא יותר גרועים מרמה 4 (כלומר הכל)
     if len(combined) < 5:
