@@ -1,12 +1,32 @@
 {
   "bad_rhyme_levels": [
-    2
+    2,
+    1,
+    3
   ],
-  "bad_key_pairs": [],
+  "bad_key_pairs": [
+    [
+      "[['y', 'A'], ['m', 'I'], ['y', ''], ['m', '']]",
+      "[['y', 'A'], ['m', 'I'], ['y', ''], ['m', '']]"
+    ],
+    [
+      "[['x', ''], ['t', 'E'], ['r', '']]",
+      "[['f', ''], ['v', 'O'], ['r', '']]"
+    ],
+    [
+      "('E', ('r',))",
+      "('E', ('r',))"
+    ]
+  ],
   "context_rejected_words": [],
   "frequent_custom_keywords": [
-    "נכון,"
+    "נכון,",
+    "השינוי",
+    "משאיר",
+    "שורה",
+    "חסרת",
+    "משמעות"
   ],
-  "total_feedback": 10,
-  "approval_rate": 0.0
+  "total_feedback": 42,
+  "approval_rate": 0.05
 }

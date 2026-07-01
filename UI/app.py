@@ -18,12 +18,13 @@ for key, default in [
     ("cached_data", None),
     ("submitted_poem", None),
     ("replacements_info", []),
+    ("rejected_words", {}),   # {original_word: set(rejected_suggestions)}
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
 
 
-# --- קלט שיר עם כפתור שליחה ---
+# --- קלט שיר ---
 user_poem = st.text_area(
     "✍️ הדביקי כאן את השיר שלך (רווח של שורה ריקה בין בית לבית):",
     height=200,
@@ -33,9 +34,10 @@ user_poem = st.text_area(
 if st.button("📨 שלחי לניתוח"):
     if user_poem.strip():
         st.session_state.submitted_poem = user_poem
-        st.session_state.cached_poem = None   # כפה חישוב מחדש
+        st.session_state.cached_poem = None
         st.session_state.suggestion_index = 0
         st.session_state.replacements_info = []
+        st.session_state.rejected_words = {}
     else:
         st.warning("נא להזין שיר לפני השליחה.")
 
@@ -44,16 +46,21 @@ if not st.session_state.submitted_poem:
 
 active_poem = st.session_state.submitted_poem
 
-# --- חישוב הצעות פעם אחת בלבד ---
+# --- חישוב הצעות ---
 if st.session_state.cached_poem != active_poem:
+    rejected_as_sets = {k: set(v) for k, v in st.session_state.rejected_words.items()}
     with st.spinner("🔄 המערכת מנתחת חריזה ומחשבת הצעות..."):
-        st.session_state.cached_data = analyze_poem_and_get_suggestions(active_poem)
+        st.session_state.cached_data = analyze_poem_and_get_suggestions(
+            active_poem, rejected_as_sets
+        )
         st.session_state.cached_poem = active_poem
         st.session_state.suggestion_index = 0
 
+# --- הצג שיר ---
 full_poem_html, has_replacements, replacements_info = render_poem_html(
     st.session_state.cached_data,
     st.session_state.suggestion_index,
+    {k: set(v) for k, v in st.session_state.rejected_words.items()},
 )
 st.session_state.replacements_info = replacements_info
 
@@ -63,7 +70,25 @@ st.markdown(full_poem_html, unsafe_allow_html=True)
 if not has_replacements:
     st.stop()
 
-# --- פאנל משוב: הרשימה מחליפה את הכפתורים ---
+# --- הצג פרטי ההצעה הנוכחית ---
+if replacements_info:
+    st.write("---")
+    st.write("**📝 הצעת שיפור:**")
+    for r in replacements_info:
+        method_label = {
+            'last_word': 'החלפת מילה אחרונה',
+            'extend': 'הוספת מילה',
+        }.get(r.get('method', ''), 'שיפור')
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**שורה מקורית:**")
+            st.write(f"_{r.get('original_line', '')}_")
+        with col2:
+            st.write(f"**שורה מוצעת** ({method_label}):")
+            st.write(f"_{r.get('suggested_line', '')}_")
+
+# --- כפתור תיקון (רינדור רק אחרי לחיצה) ---
 st.write("---")
 current_num = st.session_state.suggestion_index + 1
 st.write(f"📊 **מה דעתך על ההצעה? (מציג כעת חלופה מספר {current_num})**")
@@ -78,7 +103,6 @@ chosen_label = st.radio(
 )
 reason_key = next(k for k, v in REASON_LABELS.items() if v == chosen_label)
 
-# שדה "אחר" מופיע מיידית בלי לחיצת כפתור
 custom_text = ""
 if reason_key == "other":
     custom_text = st.text_input("פרטי/י:", key="feedback_custom")
@@ -91,16 +115,29 @@ if st.button("✅ אשרי ועברי"):
             suggested_key=r.get("suggested_key", ""),
             rhyme_level=r.get("rhyme_level", 0),
         )
-    analyze_and_save()  # עדכון כללי הלמידה
+    analyze_and_save()
 
     if reason_key == "approved":
         st.success("מעולה! התיקון נשמר.")
         st.session_state.suggestion_index = 0
     else:
-        st.session_state.suggestion_index += 1
-        if reason_key in ("worse_rhyme", "bad_context", "dislike", "other"):
-            with st.spinner("🔄 מחשב הצעה חדשה..."):
-                st.session_state.cached_data = analyze_poem_and_get_suggestions(active_poem)
-                st.session_state.suggestion_index = 0
+        # שמור את המילה הנדחית
+        for r in st.session_state.replacements_info:
+            orig = r["original_word"]
+            sug  = r["suggested_word"]
+            if orig not in st.session_state.rejected_words:
+                st.session_state.rejected_words[orig] = []
+            if sug not in st.session_state.rejected_words[orig]:
+                st.session_state.rejected_words[orig].append(sug)
+
+        # חשב מחדש עם המילים הנדחיות
+        rejected_as_sets = {k: set(v) for k, v in st.session_state.rejected_words.items()}
+        with st.spinner("🔄 מחשב הצעה חדשה..."):
+            st.session_state.cached_data = analyze_poem_and_get_suggestions(
+                active_poem, rejected_as_sets
+            )
+            st.session_state.cached_poem = active_poem
+            # אל תאפס את suggestion_index — המשך לחלופה הבאה
+            st.session_state.suggestion_index += 1
 
     st.rerun()

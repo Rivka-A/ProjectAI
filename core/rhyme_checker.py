@@ -300,4 +300,4 @@ class RhymeChecker:
                 'message': f'שורה {idx1+1} ({w1}) ושורה {idx2+1} ({w2}): {LEVEL_TYPE[level]}.'
             })
 
-        return {'pattern': pattern_name, 'alerts': alerts, 'line_keys': line_keys}
+        return {'pattern': pattern_name, 'alerts': alerts, 'line_keys': line_keys, 'expected_pairs_indices': expected_pairs}

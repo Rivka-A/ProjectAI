@@ -6,7 +6,7 @@
 from core.rhyme_checker import RhymeChecker
 from core.stress_detector import StressDetector
 from services.nakdan_service import NakdanService
-from services.bert_service import get_fill_mask_suggestions
+from services.bert_service import get_fill_mask_suggestions, complete_sentence, get_contextual_suggestions, validate_line_completeness
 from services.learning_service import get_min_acceptable_level, is_bad_pair
 
 _nakdan = NakdanService()
@@ -88,6 +88,25 @@ def _letters_only(text: str) -> str:
     return "".join(c for c in text if '\u05D0' <= c <= '\u05EA')
 
 
+def _is_valid_hebrew_word(word: str) -> bool:
+    """
+    מחזיר True אם המילה תקינה לשימוש בשיר:
+    - מכילה לפחות שתי אותיות עבריות
+    - לא מכילה סימני subword (כלומר ## בהתחלה)
+    - לא מכילה מספרים בלבד או אותיות לטיניות
+    - לא אותה מילה עצמה
+    """
+    if word.startswith('##'):
+        return False
+    letters = _letters_only(word)
+    if len(letters) < 2:
+        return False
+    # לא מקבל מילים שמתחילות במספרים או אות לטינית
+    if word[0].isdigit() or word[0].isascii():
+        return False
+    return True
+
+
 def build_candidates(
     lines: list[str],
     line2_idx: int,
@@ -103,46 +122,48 @@ def build_candidates(
     - ממיין לפי עדיפות: רמה 1 > 2 > 3
     """
     raw = get_fill_mask_suggestions(lines, line2_idx, bad_word)
-    bad_letters = _letters_only(bad_word)
+    if not raw:
+        return []
 
-    # רמה מינימלית שנלמדה מהמשובים — אבל לא להחמיר מעבר לרמת המקור
+    bad_letters = _letters_only(bad_word)
     learned_min_level = get_min_acceptable_level()
-    effective_max_level = min(orig_level, learned_min_level) if orig_level < 5 else learned_min_level
+    # כשהמקור חרוז חסר (5) מאפשרים כל רמה עד learned_min_level
+    effective_max_level = learned_min_level if orig_level >= 5 else min(orig_level, learned_min_level)
 
     buckets: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: [], 5: []}
+    all_valid: list[str] = []  # כל המילים שעברו סינון בסיסי (ללא כפילות)
     seen: set[str] = set()
 
     for word in raw:
-        if _letters_only(word) == bad_letters:
+        if _letters_only(word) == bad_letters or word in seen or word in rejected_words:
             continue
-        if word in seen or word in rejected_words:
+        if not _is_valid_hebrew_word(word):
             continue
         seen.add(word)
+        all_valid.append(word)
 
         voc = _vocalize(word)
         key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
         level = RhymeChecker.rhyme_level(target_key, key)
 
-        # סנן זוגות שנלמדו כבעייתיים
         if is_bad_pair(str(target_key), str(key)):
             continue
 
-        if level <= effective_max_level:
-            buckets.setdefault(level, []).append(word)
+        buckets[min(level, 5)].append(word)
 
-    combined = buckets.get(1, []) + buckets.get(2, []) + buckets.get(3, []) + buckets.get(4, [])
+    combined = buckets[1] + buckets[2] + buckets[3] + buckets[4]
+    # סנן לפי effective_max_level רק אם יש מספיק בתוך
+    filtered = [w for w in combined if buckets[1].count(w) + buckets[2].count(w) + buckets[3].count(w) > 0]
 
-    # אם אין מספיק — הוסף "שאר" שעדיין לא יותר גרועים מרמה 4 (כלומר הכל)
+    # אם אין הצעות טובות מספיק — קח עד 5 מכל המילים התקינות
     if len(combined) < 5:
-        for word in raw:
-            if _letters_only(word) == bad_letters or word in seen or word in rejected_words:
-                continue
-            seen.add(word)
-            combined.append(word)
+        for word in all_valid:
+            if word not in combined:
+                combined.append(word)
             if len(combined) >= 5:
                 break
 
-    return combined
+    return combined[:10]  # עד 10 הצעות
 
 
 def vocalize_lines(lines: list[str]) -> list[dict]:
@@ -159,3 +180,54 @@ def vocalize_lines(lines: list[str]) -> list[dict]:
             'was_vocalized': is_vocalized(last),
         })
     return metadata
+
+
+def complete_broken_line(line: str) -> str:
+    """משלים שורה קטועה לביטוי תקין תחבירית."""
+    if not line.strip():
+        return line
+    return complete_sentence(line, max_length=25)
+
+
+def get_enhanced_suggestions(
+    lines: list[str],
+    line_idx: int,
+    bad_word: str,
+    target_key: str,
+    orig_level: int,
+    rejected_words: set[str],
+) -> list[str]:
+    """מחזיר הצעות משופרות בהתחשב בהקשר מלא של השורה."""
+    if line_idx >= len(lines):
+        return []
+    
+    line = lines[line_idx]
+    raw = get_contextual_suggestions(line, len(line.split()) - 1)
+    
+    if not raw:
+        return build_candidates(lines, line_idx, bad_word, target_key, orig_level, rejected_words)
+    
+    bad_letters = _letters_only(bad_word)
+    learned_min_level = get_min_acceptable_level()
+    
+    buckets: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: [], 5: []}
+    seen: set[str] = set()
+    
+    for word in raw:
+        if _letters_only(word) == bad_letters or word in seen or word in rejected_words:
+            continue
+        if not _is_valid_hebrew_word(word):
+            continue
+        seen.add(word)
+        
+        voc = _vocalize(word)
+        key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
+        level = RhymeChecker.rhyme_level(target_key, key)
+        
+        if is_bad_pair(str(target_key), str(key)):
+            continue
+        
+        buckets[min(level, 5)].append(word)
+    
+    combined = buckets[1] + buckets[2] + buckets[3] + buckets[4]
+    return combined[:10]

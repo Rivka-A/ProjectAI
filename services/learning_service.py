@@ -55,8 +55,8 @@ def analyze_and_save() -> dict:
     for e in entries:
         reason = e.get("reason", "")
         level  = e.get("rhyme_level", 0)
-        tkey   = e.get("target_key", "")
-        skey   = e.get("suggested_key", "")
+        tkey   = str(e.get("target_key", ""))
+        skey   = str(e.get("suggested_key", ""))
         suggested = e.get("suggested", "")
 
         if level:
