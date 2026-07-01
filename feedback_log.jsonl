@@ -40,3 +40,4 @@
 {"ts": "2026-07-01T20:28:23.635066", "original": "ישן", "suggested": "יותר", "reason": "approved", "custom": "", "target_key": "('E', ('r',))", "suggested_key": "('E', ('r',))", "rhyme_level": 1}
 {"ts": "2026-07-01T20:50:00.913404", "original": "ישן", "suggested": "יותר", "reason": "bad_context", "custom": "", "target_key": "('E', ('r',))", "suggested_key": "('E', ('r',))", "rhyme_level": 1}
 {"ts": "2026-07-01T20:56:28.091754", "original": "אליך", "suggested": "שלישית", "reason": "bad_context", "custom": "", "target_key": "('I', ('y', 't'))", "suggested_key": "('I', ('y', 't'))", "rhyme_level": 1}
+{"ts": "2026-07-01T21:03:53.712000", "original": "חן", "suggested": "דעת", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('t',))", "suggested_key": "('A', ('t',))", "rhyme_level": 1}

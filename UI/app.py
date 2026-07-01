@@ -68,6 +68,7 @@ st.subheader("✨ השיר והסיווגים המעודכנים:")
 st.markdown(full_poem_html, unsafe_allow_html=True)
 
 if not has_replacements:
+    st.write("לא נמצאו שיפורים")
     st.stop()
 
 # --- הצג פרטי ההצעה הנוכחית ---
@@ -90,8 +91,7 @@ if replacements_info:
 
 # --- כפתור תיקון (רינדור רק אחרי לחיצה) ---
 st.write("---")
-current_num = st.session_state.suggestion_index + 1
-st.write(f"📊 **מה דעתך על ההצעה? (מציג כעת חלופה מספר {current_num})**")
+st.write(f"📊 **מה דעתך על ההצעה? **")
 
 reason_options = list(REASON_LABELS.values())
 chosen_label = st.radio(
