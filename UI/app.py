@@ -139,5 +139,5 @@ if st.button("✅ אשרי ועברי"):
             st.session_state.cached_poem = active_poem
             # אל תאפס את suggestion_index — המשך לחלופה הבאה
             st.session_state.suggestion_index += 1
-
     st.rerun()
+    

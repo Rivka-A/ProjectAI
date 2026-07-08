@@ -55,6 +55,6 @@ class StressDetector:
                     # ונוודא שבאות הראשונה של המילה יש תנועה קטנה כמו פתח שמחזיקה את המלעיל
                     if patach in letters_with_niqud[0]:
                         return "מלעיל"
-
-        # ברירת המחדל הרחבה בעברית היא מלרע
         return "מלרע"
+    
+        
