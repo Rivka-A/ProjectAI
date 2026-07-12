@@ -3,11 +3,14 @@
 כלל: הצעה נכנסת רק אם רמת החרוז שלה <= רמת המקור (כלומר לא גרועה ממנו).
 עדיפות: חרוז מושלם (1) > עיצור משותף (2) > תנועה משותפת (3).
 """
+from collections import defaultdict
+
 from core.rhyme_checker import RhymeChecker
 from core.stress_detector import StressDetector
 from services.nakdan_service import NakdanService
 from services.bert_service import get_fill_mask_suggestions, complete_sentence, get_contextual_suggestions, validate_line_completeness
 from services.learning_service import get_min_acceptable_level, is_bad_pair
+from services.phonetic_rhyme_checker import compare_phonetic_suffixes
 
 _nakdan = NakdanService()
 
@@ -107,6 +110,26 @@ def _is_valid_hebrew_word(word: str) -> bool:
     return True
 
 
+def _suffix_from_rhyme_key(key: tuple) -> tuple:
+    """שקול ל-get_phonetic_suffix, אבל מקבל key מוכן במקום (word, stress)."""
+    if not key:
+        return ('', ())
+
+    last_vowel = ''
+    vowel_index = -1
+    for i in range(len(key) - 1, -1, -1):
+        if key[i][1]:
+            last_vowel = key[i][1]
+            vowel_index = i
+            break
+
+    if not last_vowel:
+        return ('', ())
+
+    consonants = tuple(c for c, v in key[vowel_index + 1:] if c)
+    return (last_vowel, consonants)
+
+
 def build_candidates(
     lines: list[str],
     line2_idx: int,
@@ -119,7 +142,7 @@ def build_candidates(
     בונה רשימת מילים מוצעות לשורה line2_idx.
     - מסנן מילים ב-rejected_words (נדחו ע"י המשתמש)
     - מסנן הצעות שרמת החרוז שלהן גרועה מ-orig_level
-    - ממיין לפי עדיפות: רמה 1 > 2 > 3
+    - ממיין לפי עדיפות: רמה 1 > 2 > 3 > 4
     """
     raw = get_fill_mask_suggestions(lines, line2_idx, bad_word)
     if not raw:
@@ -127,12 +150,16 @@ def build_candidates(
 
     bad_letters = _letters_only(bad_word)
     learned_min_level = get_min_acceptable_level()
-    # כשהמקור חרוז חסר (5) מאפשרים כל רמה עד learned_min_level
-    effective_max_level = learned_min_level if orig_level >= 5 else min(orig_level, learned_min_level)
+    # אין הנחה קשיחה על "הרמה הכי גרועה" - orig_level ו-learned_min_level
+    # קובעים את התקרה יחסית זה לזה, לא מול קבוע מספרי כמו 4 או 5.
+    effective_max_level = max(1, min(orig_level, learned_min_level))
 
-    buckets: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: [], 5: []}
+    buckets: dict[int, list[str]] = defaultdict(list)
     all_valid: list[str] = []  # כל המילים שעברו סינון בסיסי (ללא כפילות)
+    bad_pair_words: set[str] = set()
     seen: set[str] = set()
+
+    target_key_str = str(target_key)
 
     for word in raw:
         if _letters_only(word) == bad_letters or word in seen or word in rejected_words:
@@ -143,21 +170,28 @@ def build_candidates(
         all_valid.append(word)
 
         voc = _vocalize(word)
-        key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
-        level = RhymeChecker.rhyme_level(target_key, key)
+        full_key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
+        candidate_suffix = _suffix_from_rhyme_key(full_key)
+        level = compare_phonetic_suffixes(target_key, candidate_suffix)
 
-        if is_bad_pair(str(target_key), str(key)):
+        if is_bad_pair(target_key_str, str(candidate_suffix)):
+            bad_pair_words.add(word)
             continue
 
-        buckets[min(level, 5)].append(word)
+        buckets[level].append(word)
 
-    combined = buckets[1] + buckets[2] + buckets[3] + buckets[4]
-    # סנן לפי effective_max_level רק אם יש מספיק בתוך
-    filtered = [w for w in combined if buckets[1].count(w) + buckets[2].count(w) + buckets[3].count(w) > 0]
+    # סנן לפי effective_max_level - איטרציה על כל level שבאמת הופיע,
+    # לא על טווח קשיח מראש
+    combined = []
+    for lvl in sorted(buckets):
+        if lvl <= effective_max_level:
+            combined.extend(buckets[lvl])
 
-    # אם אין הצעות טובות מספיק — קח עד 5 מכל המילים התקינות
+    # אם אין הצעות טובות מספיק — קח עד 5 מכל המילים התקינות (בלי זוגות רעים)
     if len(combined) < 5:
         for word in all_valid:
+            if word in bad_pair_words:
+                continue
             if word not in combined:
                 combined.append(word)
             if len(combined) >= 5:
@@ -208,9 +242,9 @@ def get_enhanced_suggestions(
         return build_candidates(lines, line_idx, bad_word, target_key, orig_level, rejected_words)
     
     bad_letters = _letters_only(bad_word)
-    learned_min_level = get_min_acceptable_level()
-    
-    buckets: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: [], 5: []}
+    target_key_str = str(target_key)
+
+    buckets: dict[int, list[str]] = defaultdict(list)
     seen: set[str] = set()
     
     for word in raw:
@@ -221,13 +255,14 @@ def get_enhanced_suggestions(
         seen.add(word)
         
         voc = _vocalize(word)
-        key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
-        level = RhymeChecker.rhyme_level(target_key, key)
-        
-        if is_bad_pair(str(target_key), str(key)):
+        full_key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
+        candidate_suffix = _suffix_from_rhyme_key(full_key)
+        level = compare_phonetic_suffixes(target_key, candidate_suffix)
+
+        if is_bad_pair(target_key_str, str(candidate_suffix)):
             continue
-        
-        buckets[min(level, 5)].append(word)
+
+        buckets[level].append(word)
     
-    combined = buckets[1] + buckets[2] + buckets[3] + buckets[4]
+    combined = [word for lvl in sorted(buckets) for word in buckets[lvl]]
     return combined[:10]

@@ -50,14 +50,18 @@ active_poem = st.session_state.submitted_poem
 if st.session_state.cached_poem != active_poem:
     rejected_as_sets = {k: set(v) for k, v in st.session_state.rejected_words.items()}
     with st.spinner("🔄 המערכת מנתחת חריזה ומחשבת הצעות..."):
-        st.session_state.cached_data = analyze_poem_and_get_suggestions(
-            active_poem, rejected_as_sets
-        )
-        st.session_state.cached_poem = active_poem
-        st.session_state.suggestion_index = 0
+        try:
+            st.session_state.cached_data = analyze_poem_and_get_suggestions(
+                active_poem, rejected_as_sets
+            )
+            st.session_state.cached_poem = active_poem
+            st.session_state.suggestion_index = 0
+        except ConnectionError as e:
+            st.error(f"⚠️ שגיאת תקשורת: {e}")
+            st.stop()
 
 # --- הצג שיר ---
-full_poem_html, has_replacements, replacements_info = render_poem_html(
+full_poem_html, has_replacements, replacements_info, fallback_info = render_poem_html(
     st.session_state.cached_data,
     st.session_state.suggestion_index,
     {k: set(v) for k, v in st.session_state.rejected_words.items()},
@@ -68,76 +72,147 @@ st.subheader("✨ השיר והסיווגים המעודכנים:")
 st.markdown(full_poem_html, unsafe_allow_html=True)
 
 if not has_replacements:
-    st.write("לא נמצאו שיפורים")
+    if fallback_info:
+        st.warning("⚠️ אין עוד הצעות חדשות. להלן הצעות שנפסלו בעבר:")
+        for fb in fallback_info:
+            st.write(f"**שורה {fb['line_num']}:** _{fb['original_line']}_")
+            st.write("הצעות שנפסלו: " + "، ".join(fb['rejected_suggestions']))
+    else:
+        st.write("לא נמצאו שיפורים")
     st.stop()
 
-# --- הצג פרטי ההצעה הנוכחית ---
+# --- הצג פרטי ההצעות + משוב ---
 if replacements_info:
     st.write("---")
-    st.write("**📝 הצעת שיפור:**")
-    for r in replacements_info:
-        method_label = {
-            'last_word': 'החלפת מילה אחרונה',
-            'extend': 'הוספת מילה',
-        }.get(r.get('method', ''), 'שיפור')
+    METHOD_LABEL = {
+        'last_word': 'החלפת מילה אחרונה',
+        'extend': 'הוספת מילה',
+        'שינוי סדר מילים': 'שינוי סדר מילים',
+    }
+    reason_options = list(REASON_LABELS.values())
 
+    # כשיש יותר מחרוז אחד — כל אחד מקבל radio משלו
+    per_rhyme_reasons = {}
+    for i, r in enumerate(replacements_info):
+        method_label = METHOD_LABEL.get(r.get('method', ''), 'שיפור')
+        st.write(f"**📝 הצעת שיפור לשורה {r.get('line2_num', i+1)}:**")
         col1, col2 = st.columns(2)
         with col1:
-            st.write(f"**שורה מקורית:**")
+            st.write("**שורה מקורית:**")
             st.write(f"_{r.get('original_line', '')}_")
         with col2:
             st.write(f"**שורה מוצעת** ({method_label}):")
             st.write(f"_{r.get('suggested_line', '')}_")
 
-# --- כפתור תיקון (רינדור רק אחרי לחיצה) ---
-st.write("---")
-st.write(f"📊 **מה דעתך על ההצעה? **")
-
-reason_options = list(REASON_LABELS.values())
-chosen_label = st.radio(
-    "בחרי:",
-    reason_options,
-    key="feedback_reason",
-    label_visibility="collapsed",
-    horizontal=False,
-)
-reason_key = next(k for k, v in REASON_LABELS.items() if v == chosen_label)
-
-custom_text = ""
-if reason_key == "other":
-    custom_text = st.text_input("פרטי/י:", key="feedback_custom")
-
-if st.button("✅ אשרי ועברי"):
-    for r in st.session_state.replacements_info:
-        save_feedback(
-            r["original_word"], r["suggested_word"], reason_key, custom_text,
-            target_key=r.get("target_key", ""),
-            suggested_key=r.get("suggested_key", ""),
-            rhyme_level=r.get("rhyme_level", 0),
-        )
-    analyze_and_save()
-
-    if reason_key == "approved":
-        st.success("מעולה! התיקון נשמר.")
-        st.session_state.suggestion_index = 0
-    else:
-        # שמור את המילה הנדחית
-        for r in st.session_state.replacements_info:
-            orig = r["original_word"]
-            sug  = r["suggested_word"]
-            if orig not in st.session_state.rejected_words:
-                st.session_state.rejected_words[orig] = []
-            if sug not in st.session_state.rejected_words[orig]:
-                st.session_state.rejected_words[orig].append(sug)
-
-        # חשב מחדש עם המילים הנדחיות
-        rejected_as_sets = {k: set(v) for k, v in st.session_state.rejected_words.items()}
-        with st.spinner("🔄 מחשב הצעה חדשה..."):
-            st.session_state.cached_data = analyze_poem_and_get_suggestions(
-                active_poem, rejected_as_sets
+        if len(replacements_info) > 1:
+            chosen = st.radio(
+                f"מה דעתך על הצעה זו?",
+                reason_options,
+                key=f"feedback_reason_{i}",
+                label_visibility="visible",
+                horizontal=True,
             )
-            st.session_state.cached_poem = active_poem
-            # אל תאפס את suggestion_index — המשך לחלופה הבאה
-            st.session_state.suggestion_index += 1
-    st.rerun()
-    
+            per_rhyme_reasons[i] = next(k for k, v in REASON_LABELS.items() if v == chosen)
+            if per_rhyme_reasons[i] == "other":
+                per_rhyme_reasons[f"{i}_custom"] = st.text_input("פרטי/י:", key=f"feedback_custom_{i}")
+        st.write("")
+
+    st.write("---")
+
+    if len(replacements_info) == 1:
+        # משוב רגיל — radio אחד
+        chosen_label = st.radio(
+            "📊 **מה דעתך על ההצעה?**",
+            reason_options,
+            key="feedback_reason_single",
+            label_visibility="visible",
+            horizontal=False,
+        )
+        reason_key = next(k for k, v in REASON_LABELS.items() if v == chosen_label)
+        custom_text = ""
+        if reason_key == "other":
+            custom_text = st.text_input("פרטי/י:", key="feedback_custom_single")
+
+        if st.button("✅ אשרי ועברי"):
+            for r in st.session_state.replacements_info:
+                save_feedback(
+                    r["original_word"], r["suggested_word"], reason_key, custom_text,
+                    target_key=r.get("target_key", ""),
+                    suggested_key=r.get("suggested_key", ""),
+                    rhyme_level=r.get("rhyme_level", 0),
+                )
+            analyze_and_save()
+            if reason_key == "approved":
+                st.success("מעולה! התיקון נשמר.")
+                st.session_state.suggestion_index = 0
+            else:
+                for r in st.session_state.replacements_info:
+                    orig = r["original_word"]
+                    sug  = r["suggested_word"]
+                    if orig not in st.session_state.rejected_words:
+                        st.session_state.rejected_words[orig] = []
+                    if sug not in st.session_state.rejected_words[orig]:
+                        st.session_state.rejected_words[orig].append(sug)
+                rejected_as_sets = {k: set(v) for k, v in st.session_state.rejected_words.items()}
+                with st.spinner("🔄 מחשב הצעה חדשה..."):
+                    try:
+                        st.session_state.cached_data = analyze_poem_and_get_suggestions(
+                            active_poem, rejected_as_sets
+                        )
+                        st.session_state.cached_poem = active_poem
+                        st.session_state.suggestion_index += 1
+                    except ConnectionError as e:
+                        st.error(f"⚠️ שגיאת תקשורת: {e}")
+                        st.stop()
+            st.rerun()
+
+    else:
+        # מספר חרוזים — כפתור "השינוי מבורך לשניים" + כפתור "אשר כל אחד לפי בחירתו"
+        col_all, col_each = st.columns(2)
+        with col_all:
+            if st.button("✅✅ השינוי מבורך לשניים!"):
+                for r in st.session_state.replacements_info:
+                    save_feedback(
+                        r["original_word"], r["suggested_word"], "approved", "",
+                        target_key=r.get("target_key", ""),
+                        suggested_key=r.get("suggested_key", ""),
+                        rhyme_level=r.get("rhyme_level", 0),
+                    )
+                analyze_and_save()
+                st.success("מעולה! שני התיקונים נשמרו.")
+                st.session_state.suggestion_index = 0
+                st.rerun()
+        with col_each:
+            if st.button("✅ אשר כל אחד לפי בחירתו"):
+                any_rejected = False
+                for i, r in enumerate(st.session_state.replacements_info):
+                    rk = per_rhyme_reasons.get(i, "approved")
+                    ct = per_rhyme_reasons.get(f"{i}_custom", "")
+                    save_feedback(
+                        r["original_word"], r["suggested_word"], rk, ct,
+                        target_key=r.get("target_key", ""),
+                        suggested_key=r.get("suggested_key", ""),
+                        rhyme_level=r.get("rhyme_level", 0),
+                    )
+                    if rk != "approved":
+                        any_rejected = True
+                        orig = r["original_word"]
+                        sug  = r["suggested_word"]
+                        if orig not in st.session_state.rejected_words:
+                            st.session_state.rejected_words[orig] = []
+                        if sug not in st.session_state.rejected_words[orig]:
+                            st.session_state.rejected_words[orig].append(sug)
+                analyze_and_save()
+                if any_rejected:
+                    rejected_as_sets = {k: set(v) for k, v in st.session_state.rejected_words.items()}
+                    with st.spinner("🔄 מחשב הצעות חדשות..."):
+                        try:
+                            st.session_state.cached_data = analyze_poem_and_get_suggestions(
+                                active_poem, rejected_as_sets
+                            )
+                            st.session_state.cached_poem = active_poem
+                            st.session_state.suggestion_index += 1
+                        except ConnectionError as e:
+                            st.error(f"⚠️ שגיאת תקשורת: {e}")
+                            st.stop()
+                st.rerun()

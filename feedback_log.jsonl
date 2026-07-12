@@ -41,3 +41,45 @@
 {"ts": "2026-07-01T20:50:00.913404", "original": "ישן", "suggested": "יותר", "reason": "bad_context", "custom": "", "target_key": "('E', ('r',))", "suggested_key": "('E', ('r',))", "rhyme_level": 1}
 {"ts": "2026-07-01T20:56:28.091754", "original": "אליך", "suggested": "שלישית", "reason": "bad_context", "custom": "", "target_key": "('I', ('y', 't'))", "suggested_key": "('I', ('y', 't'))", "rhyme_level": 1}
 {"ts": "2026-07-01T21:03:53.712000", "original": "חן", "suggested": "דעת", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('t',))", "suggested_key": "('A', ('t',))", "rhyme_level": 1}
+{"ts": "2026-07-12T11:42:51.767879", "original": "לומר", "suggested": "בדיוק", "reason": "other", "custom": "", "target_key": "('I', ('y', 'k'))", "suggested_key": "('I', ('y', 'v', 'k'))", "rhyme_level": 2}
+{"ts": "2026-07-12T15:35:12.062036", "original": "העלה", "suggested": "האל", "reason": "worse_rhyme", "custom": "", "target_key": "('E', ('l',))", "suggested_key": "('E', ('l',))", "rhyme_level": 1}
+{"ts": "2026-07-12T15:35:12.063231", "original": "לקרקע", "suggested": "ולמה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T15:48:05.126359", "original": "שם", "suggested": "בשדה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T15:48:05.127409", "original": "לקרקע", "suggested": "שמה", "reason": "bad_context", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T15:52:38.607031", "original": "שם", "suggested": "בשתיקה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T15:52:38.608041", "original": "לקרקע", "suggested": "שרה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:02:30.805322", "original": "שם", "suggested": "עבירה", "reason": "bad_context", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:02:30.806493", "original": "לקרקע", "suggested": "חשופה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:06:50.351087", "original": "לקרקע", "suggested": "באדמה", "reason": "approved", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:17:23.215038", "original": "שם", "suggested": "בשתיקה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:17:23.216994", "original": "לקרקע", "suggested": "אתה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:27:58.157240", "original": "ומתפלא", "suggested": "בלילה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:27:58.158197", "original": "לקרקע", "suggested": "הלילה", "reason": "bad_context", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:32:34.925916", "original": "ומתפלא", "suggested": "בתמיהה", "reason": "other", "custom": "לא מאוד מתאים", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T16:32:34.926859", "original": "לקרקע", "suggested": "ומתה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T17:27:04.839504", "original": "גדול", "suggested": "הכלה", "reason": "approved", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T17:27:04.840613", "original": "כלה", "suggested": "חתן", "reason": "bad_context", "custom": "", "target_key": "('A', ('n',))", "suggested_key": "('A', ('n',))", "rhyme_level": 1}
+{"ts": "2026-07-12T17:34:55.339074", "original": "גדול", "suggested": "פנימה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T17:34:55.340034", "original": "כלה", "suggested": "וחתן", "reason": "bad_context", "custom": "", "target_key": "('A', ('n',))", "suggested_key": "('A', ('n',))", "rhyme_level": 1}
+{"ts": "2026-07-12T17:44:18.409727", "original": "גדול", "suggested": "החתונה", "reason": "approved", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T17:44:18.410804", "original": "כלה", "suggested": "כמובן", "reason": "approved", "custom": "", "target_key": "('A', ('n',))", "suggested_key": "('A', ('n',))", "rhyme_level": 1}
+{"ts": "2026-07-12T19:05:31.433294", "original": "לומד", "suggested": "ילד", "reason": "bad_context", "custom": "", "target_key": "('E', ('d',))", "suggested_key": "('E', ('d',))", "rhyme_level": 1}
+{"ts": "2026-07-12T19:05:31.434656", "original": "באושר", "suggested": "בשמחה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T19:18:27.597587", "original": "לומד", "suggested": "עובד", "reason": "worse_rhyme", "custom": "", "target_key": "('E', ('d',))", "suggested_key": "('E', ('d',))", "rhyme_level": 1}
+{"ts": "2026-07-12T19:18:27.598641", "original": "באושר", "suggested": "באהבה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T19:44:54.298590", "original": "עומד", "suggested": "לשמוח", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('d',))", "suggested_key": "('A', ())", "rhyme_level": 3}
+{"ts": "2026-07-12T19:44:54.299625", "original": "באושר", "suggested": "שמחה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T21:18:17.519641", "original": "עומד", "suggested": "וגם", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('d',))", "suggested_key": "('A', ('m',))", "rhyme_level": 3}
+{"ts": "2026-07-12T21:18:17.521312", "original": "באושר", "suggested": "אהבה", "reason": "bad_context", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T21:20:55.406931", "original": "עומד", "suggested": "ועכשיו", "reason": "bad_context", "custom": "", "target_key": "('A', ('d',))", "suggested_key": "('A', ('v',))", "rhyme_level": 3}
+{"ts": "2026-07-12T21:20:55.408427", "original": "באושר", "suggested": "תורה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T21:57:22.096739", "original": "עומד", "suggested": "ועל", "reason": "bad_context", "custom": "", "target_key": "('A', ('d',))", "suggested_key": "('A', ('l',))", "rhyme_level": 3}
+{"ts": "2026-07-12T21:57:22.097566", "original": "באושר", "suggested": "גאווה", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T22:12:08.808003", "original": "עומד", "suggested": "לדעת", "reason": "worse_rhyme", "custom": "", "target_key": "('A', ('d',))", "suggested_key": "('A', ('t',))", "rhyme_level": 3}
+{"ts": "2026-07-12T22:12:08.808979", "original": "באושר", "suggested": "בתורה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T22:30:32.480340", "original": "לומד", "suggested": "בן", "reason": "bad_context", "custom": "", "target_key": "('E', ('d',))", "suggested_key": "('E', ('n',))", "rhyme_level": 3}
+{"ts": "2026-07-12T22:30:32.482304", "original": "באושר", "suggested": "בקדושה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T22:42:51.839890", "original": "לומד", "suggested": "מתחתן", "reason": "bad_context", "custom": "", "target_key": "('E', ('d',))", "suggested_key": "('E', ('n',))", "rhyme_level": 3}
+{"ts": "2026-07-12T22:42:51.841319", "original": "באושר", "suggested": "באנרגיה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
+{"ts": "2026-07-12T22:53:00.747902", "original": "סיפור", "suggested": "כי", "reason": "worse_rhyme", "custom": "", "target_key": "('I', ('k', 'v', 'r'))", "suggested_key": "('I', ('y',))", "rhyme_level": 3}
+{"ts": "2026-07-12T22:53:00.749607", "original": "ענק", "suggested": "מדהים", "reason": "approved", "custom": "", "target_key": "('I', ('y', 'm'))", "suggested_key": "('I', ('y', 'm'))", "rhyme_level": 1}

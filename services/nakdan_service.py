@@ -1,4 +1,6 @@
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class NakdanService:
     def __init__(self):
@@ -12,9 +14,10 @@ class NakdanService:
             "task": "nakdan"
         }
         try:
-            response = requests.post(self.url, json=payload)
+            response = requests.post(self.url, json=payload, verify=False, timeout=30)
             response.raise_for_status()  # זורק שגיאה אם יש בעיה בתקשורת
             return response.json()       # מחזיר את התשובה מהשרת
         except requests.exceptions.RequestException as e:
-            print(f"שגיאה בתקשורת עם ה-API: {e}")
-            return None
+            msg = f"שירות הניקוד אינו זמין כרגע. נסי/י שוב מאוחר יותר. ({type(e).__name__})"
+            print(f"שגיאה בתקשורת עם ה-NAKDAN: {e}")
+            raise ConnectionError(msg)

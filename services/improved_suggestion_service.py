@@ -6,6 +6,7 @@ from core.stress_detector import StressDetector
 from services.nakdan_service import NakdanService
 from services.bert_service import get_fill_mask_suggestions, get_contextual_suggestions
 from services.learning_service import get_min_acceptable_level, is_bad_pair
+from services.phonetic_rhyme_checker import compare_phonetic_suffixes
 
 _nakdan = NakdanService()
 
@@ -103,6 +104,26 @@ def _is_phonetic_exception(key1: tuple, key2: tuple) -> bool:
     return False
 
 
+def _suffix_from_rhyme_key(key: tuple) -> tuple:
+    """שקול ל-get_phonetic_suffix, אבל מקבל key מוכן במקום (word, stress)."""
+    if not key:
+        return ('', ())
+
+    last_vowel = ''
+    vowel_index = -1
+    for i in range(len(key) - 1, -1, -1):
+        if key[i][1]:
+            last_vowel = key[i][1]
+            vowel_index = i
+            break
+
+    if not last_vowel:
+        return ('', ())
+
+    consonants = tuple(c for c, v in key[vowel_index + 1:] if c)
+    return (last_vowel, consonants)
+
+
 def get_suggestions_by_rhyme(
     lines: list[str],
     line_idx: int,
@@ -129,6 +150,7 @@ def get_suggestions_by_rhyme(
     bad_letters = _letters_only(bad_word)
     suggestions_with_level = []
     seen = set()
+    target_suffix = _suffix_from_rhyme_key(target_key)
 
     for word in raw:
         # סנן בסיסי
@@ -148,12 +170,13 @@ def get_suggestions_by_rhyme(
         if _is_phonetic_exception(target_key, key):
             continue
 
-        # בדוק אם זה זוג רע
-        if is_bad_pair(str(target_key), str(key)):
-            continue
+        # חשב רמת חרוז (סולם פונטי 1-4)
+        candidate_suffix = _suffix_from_rhyme_key(key)
+        level = compare_phonetic_suffixes(target_suffix, candidate_suffix)
 
-        # חשב רמת חרוז
-        level = RhymeChecker.rhyme_level(target_key, key)
+        # בדוק אם זה זוג רע
+        if is_bad_pair(str(target_suffix), str(candidate_suffix)):
+            continue
 
         # קבל רק חרוזים טובים (רמה 1-3)
         if level <= 3:
@@ -192,7 +215,7 @@ def get_best_suggestion(
     מחזיר מילה בודדת (הטובה ביותר).
     """
     suggestions = get_suggestions_by_rhyme(
-        lines, line_idx, bad_word, target_key, 5, set()
+        lines, line_idx, bad_word, target_key, 4, set()
     )
     
     if suggestions:
@@ -223,12 +246,15 @@ def improve_poem_rhyme(lines: list[str]) -> dict:
     
     for i in range(len(lines) - 1):
         for j in range(i + 1, len(lines)):
-            level = RhymeChecker.rhyme_level(rhyme_keys[i], rhyme_keys[j])
-            
             # בדוק אם זה חריג פונטי
             if _is_phonetic_exception(rhyme_keys[i], rhyme_keys[j]):
                 continue
-            
+
+            level = compare_phonetic_suffixes(
+                _suffix_from_rhyme_key(rhyme_keys[i]),
+                _suffix_from_rhyme_key(rhyme_keys[j]),
+            )
+
             # אם לא חרוז טוב (רמה > 2)
             if level > 2:
                 issues.append({

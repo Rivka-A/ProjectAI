@@ -97,10 +97,9 @@ def rewrite_line_for_rhyme(
     extended_suggestions = _extend_line(original_line, target_suffix, num_suggestions)
     suggestions.extend(extended_suggestions)
     
-    # שיטה 3: שכתוב השורה (אם נתבקש)
-    if preserve_meaning:
-        rewritten_suggestions = _rewrite_line(original_line, target_suffix, num_suggestions)
-        suggestions.extend(rewritten_suggestions)
+    # שיטה 3: שינוי סדר מילים
+    reorder_suggestions = _reorder_words(original_line, target_suffix, num_suggestions)
+    suggestions.extend(reorder_suggestions)
     
     # מיין לפי רמת חרוז ואיכות
     suggestions.sort(key=lambda x: (x['level'], x.get('quality', 5)))
@@ -120,7 +119,7 @@ def _replace_last_word(line: str, target_suffix: Tuple, num: int) -> List[dict]:
     masked_line = ' '.join(words[:-1]) + ' [MASK]'
     
     try:
-        raw_suggestions = get_fill_mask_suggestions([masked_line], 0, '[MASK]', top_k=30)
+        raw_suggestions = get_fill_mask_suggestions([masked_line], 0, '[MASK]', top_k=50)
         
         for word in raw_suggestions:
             from services.improved_suggestion_service import _vocalize
@@ -158,7 +157,7 @@ def _extend_line(line: str, target_suffix: Tuple, num: int) -> List[dict]:
     extended_line = f"{line} [MASK]"
     
     try:
-        raw_suggestions = get_fill_mask_suggestions([extended_line], 0, '[MASK]', top_k=30)
+        raw_suggestions = get_fill_mask_suggestions([extended_line], 0, '[MASK]', top_k=50)
         
         for word in raw_suggestions:
             from services.improved_suggestion_service import _vocalize
@@ -188,30 +187,46 @@ def _extend_line(line: str, target_suffix: Tuple, num: int) -> List[dict]:
         return []
 
 
-def _rewrite_line(line: str, target_suffix: Tuple, num: int) -> List[dict]:
-    """שכתב את השורה עם משמעות דומה."""
-    # לעת עתה, שיטה פשוטה: נסה להחליף גם מילה לפני האחרונה
-    
-    suggestions = []
+def _reorder_words(line: str, target_suffix, num: int) -> list:
+    """נסה סדרי מילים שונים כדי שהמילה האחרונה תתחרז."""
+    from itertools import permutations
+    from services.improved_suggestion_service import _vocalize
+    from core.stress_detector import StressDetector
+
     words = line.split()
-    
-    if len(words) < 2:
+    if len(words) < 2 or len(words) > 6:  # מעל 6 מילים — יותר מדי תמורות
         return []
-    
-    # החלף את שתי המילים האחרונות
-    masked_line = ' '.join(words[:-2]) + ' [MASK] [MASK]'
-    
-    try:
-        raw_suggestions = get_fill_mask_suggestions([masked_line], 0, '[MASK] [MASK]', top_k=50)
-        
-        # הצעות של זוגות מילים
-        # לעת עתה, נחזיר הצעות פשוטות
-        # בגרסה עתידית, אפשר להשתמש בפרומפט ייעודי
-        
-        return suggestions
-    
-    except:
-        return []
+
+    suggestions = []
+    seen = set()
+    original_tuple = tuple(words)
+
+    for perm in permutations(words):
+        if perm == original_tuple:
+            continue
+        last_word = perm[-1]
+        if last_word in seen:
+            continue
+        seen.add(last_word)
+        try:
+            voc = _vocalize(last_word)
+            suffix = get_phonetic_suffix(voc, StressDetector.detect_stress(voc))
+            level = compare_phonetic_suffixes(suffix, target_suffix)
+            if level <= 2:
+                suggestions.append({
+                    'line': ' '.join(perm),
+                    'method': 'שינוי סדר מילים',
+                    'last_word': last_word,
+                    'suffix': suffix,
+                    'level': level,
+                    'quality': 1,
+                })
+        except:
+            continue
+
+    suggestions.sort(key=lambda x: x['level'])
+    return suggestions[:num]
+
 
 
 def suggest_line_variations(

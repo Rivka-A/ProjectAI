@@ -80,8 +80,20 @@ class RhymeChecker:
 
     ALL_NIQUD = set(NIQUD_TO_VOWEL) | {DAGESH, SHINDOT, SINDOT}
 
-    # אותיות גרוניות שקדימת פתח גנובה = עבור קצר
-    GUTTURALS = {'\u05D0', '\u05D4', '\u05D7', '\u05E2'}
+    # source={
+    # 'GUTTURALS' : {'\u05D0', '\u05D4', '\u05D7', '\u05E2'},
+    # 'LINGUISTIC' : {'\u05D3','\u05D8','\u05DC', '\u05DF','\u05E0','\u05E0','\u05EA'},
+    # 'TEETHING' : {'\u05D6','\u05E1','\u05E5','\u05E6','\u05E9', '\u05C1' '\u05C2'},
+    # 'PALATAL' : {'\u05D2','\u05D9','\u05DA','\u05DB','\u05E7'},
+    # 'LIPS' : {'\u05D1','\u05D5','\u05DD','\u05DE','\u05E4','\u05E3'}
+    # }
+    source = {
+            'GUTTURALS': {'', 'h', 'x'},  # א (שקטה), ה, ח/כ רפה, ע (שקטה) -> מיוצגות ע"י פונמות ריקות, h או x
+            'LINGUISTIC': {'d', 't', 'l', 'n'},  # ד, ט, ל, נ, ת
+            'TEETHING': {'z', 's', 'ts', 'sh'},  # ז, ס, צ, ש (שמאלית וימנית) -> כאן נכנס 'sh'
+            'PALATAL': {'g', 'y', 'x', 'k'},     # ג, י, כ, ק
+            'LIPS': {'v', 'b', 'm', 'p', 'f'}    # ב, ו, מ, פ
+        }
 
     @classmethod
     def _to_syllables(cls, vocalized_word: str) -> list[tuple[str, str]]:
@@ -123,7 +135,7 @@ class RhymeChecker:
                 is_last_letter = next_letter_pos >= len(w)
 
                 is_patah_ganuvah = (
-                    c in cls.GUTTURALS
+                    c in cls.source['GUTTURALS']
                     and cls.PATAH in niqud
                     and not any(n in cls.NIQUD_TO_VOWEL and n != cls.PATAH for n in niqud)
                     and is_last_letter
@@ -193,36 +205,16 @@ class RhymeChecker:
     @classmethod
     def rhyme_level(cls, key1: tuple, key2: tuple) -> int:
         """
-        משווה שני מפתחות חרוז (tuples של פונמות) ומחזיר רמה 1-5.
-          1 = חרוז מושלם
-          2 = הברה סופית זהה (תנועה + עיצורים סופיים) — עיצור נושא שונה
-          3 = עיצורים סופיים זהים, תנועה שונה
-          4 = תנועה סופית זהה, עיצורים שונים
-          5 = אין חרוז
+        1 = חרוז מושלם  (כל המפתח זהה)
+        2 = חרוז טוב   (תנועה + עיצורים סופיים זהים, עיצור נושא שונה)
+        3 = עיצור משותף  (תנועה זהה, עיצורים סופיים זהים אך שייכים לאותה קבוצת מוצא)
+        4 = תנועה משותפת (תנועה זהה, שתיהן פתוחות בלי עיצור)
+        5 = לא חרוז
         """
         if key1 == key2:
             return 1
 
-        def last_vowel(key):
-            for cons, vowel in reversed(key):
-                if vowel:
-                    return vowel
-            return ''
-
-        def cons_after_last_vowel(key):
-            """רצף העיצורים אחרי התנועה האחרונה."""
-            found = False
-            result = []
-            for cons, vowel in reversed(key):
-                if not found:
-                    if vowel:
-                        found = True
-                else:
-                    result.append(cons)
-            return tuple(reversed(result))
-
         def last_syllable(key):
-            """(תנועה, עיצורים-אחריה)"""
             for i in range(len(key) - 1, -1, -1):
                 if key[i][1]:
                     return key[i][1], tuple(c for c, v in key[i+1:] if c)
@@ -231,12 +223,30 @@ class RhymeChecker:
         v1, ca1 = last_syllable(key1)
         v2, ca2 = last_syllable(key2)
 
-        if v1 == v2 and ca1 == ca2:   # הברה סופית זהה
-            return 2
-        if ca1 == ca2 and ca1 != (): # עיצורים סופיים זהים, תנועה שונה
-            return 3
-        if v1 == v2 and v1 != '':    # תנועה סופית זהה, עיצורים שונים
-            return 4
+        if not v1 or not v2:
+            return 5
+
+        if v1 != v2:
+            return 5
+
+        # תנועה זהה מכאן
+        if ca1 == ca2:
+            return 2  # עיצורים סופיים זהים (עיצור נושא שונה בלבד)
+
+        # עיצורים סופיים שונים
+        if not ca1 and not ca2:
+            return 4  # שתיהן פתוחות
+
+        if ca1 and ca2:
+            # בדוק אם שייכים לאותה קבוצת מוצא
+            def get_group(c):
+                for name, phonemes in cls.source.items():
+                    if c in phonemes:
+                        return name
+                return None
+            if get_group(ca1[0]) == get_group(ca2[0]) and get_group(ca1[0]) is not None:
+                return 3
+
         return 5
 
     @classmethod
@@ -272,6 +282,7 @@ class RhymeChecker:
                 expected_pairs = [(0,1),(1,2),(2,3)]
             elif is_aaab:
                 pattern_name = 'א-א-א-ב (חריזה פיוטית)'
+
                 expected_pairs = [(0,1),(1,2)]
             elif score_aabb >= score_abab and score_aabb >= score_abba:
                 pattern_name = 'א-א-ב-ב (חריזה צמודה)'
