@@ -83,3 +83,4 @@
 {"ts": "2026-07-12T22:42:51.841319", "original": "באושר", "suggested": "באנרגיה", "reason": "dislike", "custom": "", "target_key": "('A', ('h',))", "suggested_key": "('A', ('h',))", "rhyme_level": 1}
 {"ts": "2026-07-12T22:53:00.747902", "original": "סיפור", "suggested": "כי", "reason": "worse_rhyme", "custom": "", "target_key": "('I', ('k', 'v', 'r'))", "suggested_key": "('I', ('y',))", "rhyme_level": 3}
 {"ts": "2026-07-12T22:53:00.749607", "original": "ענק", "suggested": "מדהים", "reason": "approved", "custom": "", "target_key": "('I', ('y', 'm'))", "suggested_key": "('I', ('y', 'm'))", "rhyme_level": 1}
+{"ts": "2026-07-13T10:26:12.953020", "original": "ענק", "suggested": "ענקי", "reason": "worse_rhyme", "custom": "", "target_key": "('I', ('k', 'v', 'r'))", "suggested_key": "('I', ('y',))", "rhyme_level": 3}

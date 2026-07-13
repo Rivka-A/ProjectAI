@@ -91,7 +91,7 @@ class RhymeChecker:
             'GUTTURALS': {'', 'h', 'x'},  # א (שקטה), ה, ח/כ רפה, ע (שקטה) -> מיוצגות ע"י פונמות ריקות, h או x
             'LINGUISTIC': {'d', 't', 'l', 'n'},  # ד, ט, ל, נ, ת
             'TEETHING': {'z', 's', 'ts', 'sh'},  # ז, ס, צ, ש (שמאלית וימנית) -> כאן נכנס 'sh'
-            'PALATAL': {'g', 'y', 'x', 'k'},     # ג, י, כ, ק
+            'PALATAL': {'g', 'y', 'x', 'k','r'},     # ג, י, כ, ק
             'LIPS': {'v', 'b', 'm', 'p', 'f'}    # ב, ו, מ, פ
         }
 
@@ -238,13 +238,16 @@ class RhymeChecker:
             return 4  # שתיהן פתוחות
 
         if ca1 and ca2:
-            # בדוק אם שייכים לאותה קבוצת מוצא
             def get_group(c):
                 for name, phonemes in cls.source.items():
                     if c in phonemes:
                         return name
                 return None
-            if get_group(ca1[0]) == get_group(ca2[0]) and get_group(ca1[0]) is not None:
+            # כל העיצורים חייבים להיות באותה קבוצת מוצא זוגית
+            if len(ca1) == len(ca2) and all(
+                get_group(c1) == get_group(c2) and get_group(c1) is not None
+                for c1, c2 in zip(ca1, ca2)
+            ):
                 return 3
 
         return 5

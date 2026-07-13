@@ -293,6 +293,7 @@ try:
     _model = AutoModelForMaskedLM.from_pretrained("avichr/heBERT")
     _fill_mask = hf_pipeline("fill-mask", model=_model, tokenizer=_tokenizer, device=0 if torch.cuda.is_available() else -1)
 except Exception:
+    print("HeBERT not available, falling back to local model.")
     # fallback למודל מקומי אם HeBERT לא זמין
     _tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
     _model = AutoModelForMaskedLM.from_pretrained(MODEL_DIR)
@@ -304,6 +305,7 @@ try:
     _seq2seq_model = AutoModelForSeq2SeqLM.from_pretrained("google/mt5-small")
     _text_generation = hf_pipeline("text2text-generation", model=_seq2seq_model, tokenizer=_seq2seq_tokenizer, device=0 if torch.cuda.is_available() else -1)
 except Exception:
+    print("Seq2Seq model not available. bert_service line 308")
     _seq2seq_tokenizer = None
     _seq2seq_model = None
     _text_generation = None
@@ -328,7 +330,8 @@ def get_fill_mask_suggestions(stanza_lines: list[str], target_idx: int, original
     try:
         results = _fill_mask(context, top_k=top_k)
         return [r["token_str"].strip() for r in results if r.get("token_str") and r["token_str"].strip() not in SKIP_TOKENS]
-    except Exception:
+    except Exception as e:
+        print(f"Error in get_fill_mask_suggestions bert_service line 334: {e}")
         return []
 
 
@@ -350,7 +353,8 @@ def complete_sentence(partial_line: str, max_length: int = 20) -> str:
             result = _text_generation(prompt, max_length=max_length, num_beams=3)
             if result and result[0].get('generated_text'):
                 return result[0]['generated_text'].replace(prompt, "").strip()
-        except Exception:
+        except Exception as e:
+            print(f"Error in complete_sentence bert_service line 350: {e}")
             pass
     
     return fixed
@@ -374,7 +378,8 @@ def get_contextual_suggestions(context: str, position: int, top_k: int = 30) -> 
         suggestions = [r["token_str"].strip() for r in results if r.get("token_str") and r["token_str"].strip() not in SKIP_TOKENS and is_valid_word(r["token_str"])]
 
         return suggestions
-    except Exception:
+    except Exception as e:
+        print(f"Error in get_contextual_suggestions bert_service line 382: {e}")
         return []
 
 

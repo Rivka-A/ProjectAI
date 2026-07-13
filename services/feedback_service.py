@@ -54,6 +54,7 @@ def load_all_feedback() -> list[dict]:
             try:
                 entries.append(json.loads(line))
             except json.JSONDecodeError:
+                print(f"Warning: could not parse line in feedback log: {line.strip()} feedback_service 57")
                 continue
     return entries
 

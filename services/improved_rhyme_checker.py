@@ -130,7 +130,9 @@ class ImprovedRhymeChecker:
                 if cls.is_valid_rhyme(target_word, vocalized, target_stress, 
                                      suggestion_stress, min_level=min_level):
                     filtered.append(suggestion)
-            except Exception:
+            except Exception as e:
+                print(f"Error occurred while processing suggestion '{suggestion}': {e} ImprovedRhymeChecker 134")
+
                 # אם יש שגיאה, דלג על ההצעה
                 continue
         
@@ -161,7 +163,8 @@ class ImprovedRhymeChecker:
                     continue
                 
                 ranked.append((suggestion, level))
-            except Exception:
+            except Exception as e:
+                print(f"Error occurred while ranking suggestion '{suggestion}': {e} ImprovedRhymeChecker 167")
                 continue
         
         # מיין לפי רמה (1 = הטוב ביותר)

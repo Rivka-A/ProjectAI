@@ -51,7 +51,10 @@ def compare_phonetic_suffixes(suffix1: tuple, suffix2: tuple) -> int:
                 if c in phonemes:
                     return name
             return None
-        if get_group(cons1[0]) == get_group(cons2[0]) and get_group(cons1[0]) is not None:
+        if len(cons1) == len(cons2) and all(
+            get_group(c1) == get_group(c2) and get_group(c1) is not None
+            for c1, c2 in zip(cons1, cons2)
+        ):
             return 3
 
     return 5
@@ -95,7 +98,8 @@ def filter_rhyming_words(words: list, target_word_vocalized: str, min_level: int
             vocalized = _vocalize(word)
             if is_rhyme(target_word_vocalized, vocalized, min_level=min_level):
                 filtered.append(word)
-        except:
+        except Exception as e:
+            print(f"Error processing word '{word}' for rhyming check: {e}")
             continue
     return filtered
 
@@ -113,7 +117,8 @@ def rank_words_by_rhyme(words: list, target_word_vocalized: str) -> list:
             level = compare_phonetic_suffixes(suffix, target_suffix)
             if level <= 3:
                 ranked.append((word, level))
-        except:
+        except Exception as e:
+            print(f"Error processing word '{word}' for ranking: {e}")
             continue
     ranked.sort(key=lambda x: x[1])
     return ranked

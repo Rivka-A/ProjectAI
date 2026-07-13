@@ -20,6 +20,10 @@
     [
       "('A', ('h',))",
       "('A', ('h',))"
+    ],
+    [
+      "('I', ('k', 'v', 'r'))",
+      "('I', ('y',))"
     ]
   ],
   "context_rejected_words": [],
@@ -31,6 +35,6 @@
     "חסרת",
     "משמעות"
   ],
-  "total_feedback": 85,
+  "total_feedback": 86,
   "approval_rate": 0.08
 }

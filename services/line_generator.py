@@ -50,7 +50,8 @@ def generate_rhyming_lines(
                         'level': level,
                         'method': 'BERT mask',
                     })
-            except:
+            except Exception as e:
+                print(f"Error processing suggestion '{word}': {e} line_generator 54")
                 continue
         
         # מיין לפי רמת חרוז
@@ -59,7 +60,7 @@ def generate_rhyming_lines(
         return suggestions[:num_suggestions]
     
     except Exception as e:
-        print(f"שגיאה: {e}")
+        print(f"שגיאה: {e} line_generator 63")
         return []
 
 
@@ -140,12 +141,15 @@ def _replace_last_word(line: str, target_suffix: Tuple, num: int) -> List[dict]:
                         'level': level,
                         'quality': 1,  # איכות טובה - שינוי מינימלי
                     })
-            except:
+            except Exception as e:
+                print(f"Error processing suggestion '{word}': {e} line_generator 145")
                 continue
         
         return suggestions
     
-    except:
+    except Exception as e:
+        print(f"Error in _replace_last_word for line: {line}: {e} line_generator 150")
+        print(f"Error in _replace_last_word for line: {line}")
         return []
 
 
@@ -178,12 +182,14 @@ def _extend_line(line: str, target_suffix: Tuple, num: int) -> List[dict]:
                         'level': level,
                         'quality': 2,  # איכות בינונית
                     })
-            except:
+            except Exception as e:
+                print(f"Error processing suggestion '{word}': {e} line_generator 185")
                 continue
         
         return suggestions
     
-    except:
+    except Exception as e:
+        print(f"Error in _extend_line for line: {line}: {e} line_generator 191")
         return []
 
 
@@ -221,7 +227,8 @@ def _reorder_words(line: str, target_suffix, num: int) -> list:
                     'level': level,
                     'quality': 1,
                 })
-        except:
+        except Exception as e:
+            print(f"Error processing suggestion '{last_word}': {e} line_generator 85")
             continue
 
     suggestions.sort(key=lambda x: x['level'])
@@ -324,11 +331,13 @@ def create_line_from_idea(
                         'level': level,
                         'style': style,
                     })
-            except:
+            except Exception as e:
+                print(f"Error processing suggestion '{word}': {e} line_generator 334")
                 continue
         
         suggestions.sort(key=lambda x: x['level'])
         return suggestions[:10]
     
-    except:
+    except Exception as e:
+        print(f"Error in create_line_from_idea: {e} line_generator 341")
         return []
