@@ -1,5 +1,6 @@
 """
 Orchestration: ניתוח שיר, בניית הצעות, רינדור HTML.
+מחובר ישירות למנוע ה-Core המאוחד (RhymeChecker).
 """
 import sys
 import os
@@ -8,15 +9,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 
+# ייבוא מנוע ה-Core החדש והמאוחד
 from core.rhyme_checker import RhymeChecker
 from core.stress_detector import StressDetector
-from services.improved_suggestion_service import vocalize_lines, _vocalize
-from services.phonetic_rhyme_checker import get_phonetic_suffix, compare_phonetic_suffixes
+
+# ייבוא שירותים משלימים
+from services.improved_suggestion_service import vocalize_lines, _vocalize, _is_valid_hebrew_word, _letters_only
 from services.line_generator import rewrite_line_for_rhyme
 from services.feedback_service import get_rejected_words
 from services.bert_service import get_fill_mask_suggestions
-from services.improved_suggestion_service import _is_valid_hebrew_word, _letters_only
-
 
 
 LEVEL_LABEL = {
@@ -32,42 +33,63 @@ def _get_line_suggestions(
     lines: list[str],
     line_idx: int,
     bad_word: str,
-    target_suffix: tuple,
+    target_key: tuple,
     rejected: set,
     orig_level: int = 5,
 ) -> list[dict]:
-    
+    """בניית הצעות למילה חלופית בשורה ספציפית באמצעות BERT וסינון פונטי."""
     suggestions = []
     seen_words = set()
     bad_letters = _letters_only(bad_word)
 
     if orig_level <= 1:
+        print(f"[DEBUG] _get_line_suggestions: orig_level={orig_level} <= 1, skipping for '{bad_word}'")
         return []
+
+    print(f"[DEBUG] _get_line_suggestions called: line_idx={line_idx}, bad_word='{bad_word}', orig_level={orig_level}")
+    # חסום רק את המילות הסיום של שורות אחרות בבית
+    for i, l in enumerate(lines):
+        if i != line_idx:
+            words_in_l = l.split()
+            if words_in_l:
+                seen_words.add(_letters_only(words_in_l[-1]))
+    seen_words.add(_letters_only(bad_word))
+    print(f"[DEBUG] seen_words (blocked): {seen_words}")
+
+    # קבלת הצעות גולמיות ממודל BERT
     raw = get_fill_mask_suggestions(lines, line_idx, bad_word, top_k=50)
+    print(f"[DEBUG] BERT raw suggestions for '{bad_word}': {raw}")
     for word in raw:
-        if not word or word in seen_words or word in rejected:
+        if not word or _letters_only(word) in seen_words or word in rejected:
+            print(f"[DEBUG] BLOCKED '{word}' (letters: {_letters_only(word)})")
             continue
         if _letters_only(word) == bad_letters:
             continue
         if not _is_valid_hebrew_word(word):
             continue
-        seen_words.add(word)
+        seen_words.add(_letters_only(word))
 
         voc = _vocalize(word)
-        suffix = get_phonetic_suffix(voc, StressDetector.detect_stress(voc))
-        level = compare_phonetic_suffixes(suffix, target_suffix)
-        if level < orig_level:
-            words = lines[line_idx].split()
-            new_line = ' '.join(words[:-1] + [word]) if words else word
+        stress = StressDetector.detect_stress(voc)
+        sug_key = RhymeChecker.extract_rhyme_key(voc, stress)
+        level = RhymeChecker.rhyme_level(sug_key, target_key)
+        print(f"[DEBUG] ACCEPTED '{word}' -> level {level}")
+
+        if level <= 5:
+            words_in_line = lines[line_idx].split()
+            new_line = ' '.join(words_in_line[:-1] + [word]) if words_in_line else word
             suggestions.append({'line': new_line, 'last_word': word, 'level': level, 'method': 'last_word'})
 
-    if len(suggestions) < 3:
-        extended = rewrite_line_for_rhyme(lines[line_idx], target_suffix, num_suggestions=5)
-        for sug in extended:
-            w = sug.get('last_word', '')
-            if sug.get('method') == 'הוספת מילה' and w and w not in seen_words and '[MASK]' not in sug.get('line', ''):
-                seen_words.add(w)
-                suggestions.append({'line': sug['line'], 'last_word': w, 'level': sug['level'], 'method': 'extend'})
+    extended = rewrite_line_for_rhyme(lines[line_idx], target_key, num_suggestions=10)
+    print(f"[DEBUG] extended suggestions: {[(s['last_word'], s['level']) for s in extended]}")
+    for sug in extended:
+        w = sug.get('last_word', '')
+        w_letters = _letters_only(w)
+        if w and w_letters not in seen_words and '[MASK]' not in sug.get('line', ''):
+            seen_words.add(w_letters)
+            suggestions.append({'line': sug['line'], 'last_word': w, 'level': sug['level'], 'method': sug.get('method', 'extend')})
+        elif w and w_letters in seen_words:
+            print(f"[DEBUG] extended BLOCKED '{w}' (already in stanza)")
 
     suggestions.sort(key=lambda x: x['level'])
     return suggestions[:10]
@@ -77,17 +99,18 @@ def _get_pair_suggestions_parallel(
     lines: list[str],
     idx1: int,
     idx2: int,
-    suffix1: tuple,
-    suffix2: tuple,
+    key1: tuple,
+    key2: tuple,
     word1: str,
     word2: str,
     rejected1: set,
     rejected2: set,
     orig_level: int = 5,
 ) -> tuple[list[dict], list[dict]]:
+    """הרצת חיפוש הצעות במקביל לשתי השורות שאינן מתחרזות היטב."""
     with ThreadPoolExecutor(max_workers=2) as ex:
-        f1 = ex.submit(_get_line_suggestions, lines, idx2, word2, suffix1, rejected2, orig_level)
-        f2 = ex.submit(_get_line_suggestions, lines, idx1, word1, suffix2, rejected1, orig_level)
+        f1 = ex.submit(_get_line_suggestions, lines, idx2, word2, key1, rejected2, orig_level)
+        f2 = ex.submit(_get_line_suggestions, lines, idx1, word1, key2, rejected1, orig_level)
         sug_for_line2 = f1.result()
         sug_for_line1 = f2.result()
     return sug_for_line2, sug_for_line1
@@ -105,18 +128,12 @@ def _is_bbbb(stanza_analysis: dict) -> bool:
 
 
 def _get_b_key(rhyme_keys: list) -> tuple | None:
-    """מפתח שורה ד' (ה-B) בבית AAAB."""
+    """מחלץ את מפתח שורה ד' (שורת ה-B) בבית במבנה AAAB."""
     return rhyme_keys[3] if len(rhyme_keys) == 4 else None
 
 
 def _analyze_poem_wide_pattern(all_stanzas: list[dict]) -> dict | None:
-    """
-    בדיקת תבנית AAAB ברמת השיר כולו.
-    תנאים:
-    - כל הבתים הם AAAB, עם אפשרות לבית BBBB אחד בלבד (פזמון)
-    - ה-B חייב להיות זהה בכל הבתים AAAB
-    מחזיר {'b_key': tuple, 'bbbb_stanza_idx': int|None} או None.
-    """
+    """ניתוח תבניות חריזה גלובליות ברמת השיר (למשל פזמון BBBB חוזר או סיומות AAAB)."""
     if len(all_stanzas) < 2:
         return None
 
@@ -149,40 +166,42 @@ def _analyze_poem_wide_pattern(all_stanzas: list[dict]) -> dict | None:
 
 
 def _analyze_stanza(raw_stanza: str) -> dict | None:
-    """ניתוח ראשוני של בית בודד — מיועד להרצה ב-thread."""
+    """ניתוח ראשוני וממוקצע של בית בודד באמצעות ה-Core המאוחד."""
     lines = [l.strip() for l in raw_stanza.split("\n") if l.strip()]
     if not lines:
         return None
     metadata = vocalize_lines(lines)
+    
+    # שימוש ישיר ב-Core המאוחד לניתוח הבית
     stanza_analysis = RhymeChecker.analyze_stanza(metadata)
-    phonetic_suffixes = [
-        get_phonetic_suffix(m['last_word_vocalized'], m['stress_type'])
-        for m in metadata
-    ]
-    b_key = _get_b_key(stanza_analysis['line_keys']) if _is_aaab(stanza_analysis) else None
+    
+    # שליפת מפתחות הבית ישירות מתוך ה-Core
+    rhyme_keys = stanza_analysis['line_keys']
+    b_key = _get_b_key(rhyme_keys) if _is_aaab(stanza_analysis) else None
+    
     return {
         'lines': lines,
         'metadata': metadata,
-        'rhyme_keys': stanza_analysis['line_keys'],
-        'phonetic_suffixes': phonetic_suffixes,
+        'rhyme_keys': rhyme_keys,
         'pattern': stanza_analysis['pattern'],
         '_analysis': stanza_analysis,
-        'b_key': b_key,  # None אם לא AAAB
+        'b_key': b_key,
     }
 
 
 def _build_stanza_suggestions(stanza: dict, poem_wide: dict | None, rejected_words: dict) -> dict:
-    """קביעת זוגות חריזה ובניית הצעות לבית בודד — מיועד להרצה ב-thread."""
-    lines             = stanza['lines']
-    metadata          = stanza['metadata']
-    phonetic_suffixes = stanza['phonetic_suffixes']
-    analysis          = stanza['_analysis']
+    """חישוב והתאמת זוגות חריזה ובניית הצעות לשיפור שורות חלשות בבית."""
+    lines       = stanza['lines']
+    metadata    = stanza['metadata']
+    rhyme_keys  = stanza['rhyme_keys']
+    analysis    = stanza['_analysis']
 
     expected_pairs = [
         (i + 1, j + 1)
         for i, j in analysis.get('expected_pairs_indices', [])
     ]
 
+    # התאמה לחריזה רוחבית בשיר במידה וזוהה מבנה AAAB
     if poem_wide:
         b_key = poem_wide['b_key']
         if _is_aaab(analysis):
@@ -196,56 +215,72 @@ def _build_stanza_suggestions(stanza: dict, poem_wide: dict | None, rejected_wor
 
     orig_alerts = {}
     for line1_num, line2_num in expected_pairs:
-        level = compare_phonetic_suffixes(
-            phonetic_suffixes[line1_num - 1],
-            phonetic_suffixes[line2_num - 1]
+        # שימוש במנגנון הדרגות המאוחד 1-5
+        level = RhymeChecker.rhyme_level(
+            rhyme_keys[line1_num - 1],
+            rhyme_keys[line2_num - 1]
         )
+        # כל רמה מעל 2 (כלומר 3, 4, 5) נחשבת לדורשת שיפור/התרעה
         if level > 2:
             orig_alerts[line2_num] = {'level': level, 'lines': (line1_num, line2_num)}
+            print(f"[DEBUG] alert: lines ({line1_num},{line2_num}), level={level}")
 
     suggestions_per_line: dict[int, list[dict]] = {}
-    target_suffixes: dict[int, tuple] = {}
+    target_keys: dict[int, tuple] = {}
 
     for line1_num, line2_num in expected_pairs:
         if line2_num not in orig_alerts:
             continue
-        if orig_alerts[line2_num]['level'] <= 1:
+        if orig_alerts[line2_num]['level'] <= 2:
             continue
+        
         idx1, idx2 = line1_num - 1, line2_num - 1
         word1 = metadata[idx1]['original_word']
         word2 = metadata[idx2]['original_word']
-        suffix1 = phonetic_suffixes[idx1]
-        suffix2 = phonetic_suffixes[idx2]
+        key1 = rhyme_keys[idx1]
+        key2 = rhyme_keys[idx2]
+        
         rejected1 = get_rejected_words(word1) | rejected_words.get(word1, set())
         rejected2 = get_rejected_words(word2) | rejected_words.get(word2, set())
 
         sug_line2, sug_line1 = _get_pair_suggestions_parallel(
-            lines, idx1, idx2, suffix1, suffix2, word1, word2, rejected1, rejected2,
+            lines, idx1, idx2, key1, key2, word1, word2, rejected1, rejected2,
             orig_level=orig_alerts[line2_num]['level'],
         )
 
         best2 = sug_line2[0]['level'] if sug_line2 else 99
         best1 = sug_line1[0]['level'] if sug_line1 else 99
+        print(f"[DEBUG] pair ({line1_num},{line2_num}): best for line{line2_num}={best2} ({sug_line2[0]['last_word'] if sug_line2 else 'none'}), best for line{line1_num}={best1} ({sug_line1[0]['last_word'] if sug_line1 else 'none'})")
 
-        if best2 <= best1:
+        # כשהרמות שוות — בחר את השורה שיש לה יותר הצעות ברמה 1
+        if best2 == best1:
+            count1_line2 = sum(1 for s in sug_line2 if s['level'] == 1)
+            count1_line1 = sum(1 for s in sug_line1 if s['level'] == 1)
+            prefer_line1 = count1_line1 > count1_line2
+        else:
+            prefer_line1 = best1 < best2
+
+        if not prefer_line1:
             suggestions_per_line[line2_num] = sug_line2
-            target_suffixes[line2_num] = suffix1
+            target_keys[line2_num] = key1
         else:
             suggestions_per_line[line1_num] = sug_line1
-            target_suffixes[line1_num] = suffix2
+            target_keys[line1_num] = key2
             orig_alerts[line1_num] = orig_alerts.pop(line2_num)
             orig_alerts[line1_num]['lines'] = (line2_num, line1_num)
+
 
     return {
         **stanza,
         'expected_pairs':       expected_pairs,
         'orig_alerts':          orig_alerts,
         'suggestions_per_line': suggestions_per_line,
-        'target_suffixes':      target_suffixes,
+        'target_keys':          target_keys,
     }
 
 
 def analyze_poem_and_get_suggestions(poem_text: str, rejected_words: dict = None) -> list[dict] | None:
+    """הפונקציה המרכזית ב-Pipeline לניתוח השיר כולו, בנייה והפקת הצעות חלופיות במקביל."""
     if not poem_text.strip():
         return None
     if rejected_words is None:
@@ -261,10 +296,10 @@ def analyze_poem_and_get_suggestions(poem_text: str, rejected_words: dict = None
             ordered[futures[f]] = f.result()
     all_stanzas = [s for s in ordered if s is not None]
 
-    # שלב 2: בדיקת תבנית AAAB ברמת השיר כולו
+    # שלב 2: בדיקת תבנית חריזה רוחבית בשיר
     poem_wide = _analyze_poem_wide_pattern(all_stanzas)
 
-    # שלב 3: בניית הצעות לכל הבתים במקביל
+    # שלב 3: הרצת בניית הצעות לכל הבתים במקביל
     with ThreadPoolExecutor(max_workers=len(all_stanzas)) as ex:
         futures = {ex.submit(_build_stanza_suggestions, s, poem_wide, rejected_words): i
                    for i, s in enumerate(all_stanzas)}
@@ -276,12 +311,13 @@ def analyze_poem_and_get_suggestions(poem_text: str, rejected_words: dict = None
 
 
 def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_words: dict = None) -> tuple[str, bool, list[dict], list[dict]]:
+    """מרנדר את השיר ל-HTML אינטראקטיבי, מחליף מילים לשיפור ומסמן סטטוס ורמות חריזה."""
     if rejected_words is None:
         rejected_words = {}
     stanzas_html = []
     has_replacements = False
     replacements_info: list[dict] = []
-    fallback_info: list[dict] = []  # מילים שנפסלו כשאין הצעות חדשות
+    fallback_info: list[dict] = []
 
     for stanza in all_stanzas:
         lines                = stanza['lines']
@@ -289,8 +325,8 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
         expected_pairs       = stanza['expected_pairs']
         orig_alerts          = stanza['orig_alerts']
         suggestions_per_line = stanza['suggestions_per_line']
-        target_suffixes      = stanza['target_suffixes']
-        phonetic_suffixes    = stanza['phonetic_suffixes']
+        target_keys          = stanza['target_keys']
+        rhyme_keys           = stanza['rhyme_keys']
 
         display_lines = list(lines)
         eval_lines    = list(lines)
@@ -300,7 +336,6 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
             line2_idx = line2_num - 1
             line1_idx = line1_num - 1
 
-            # מצא איזו שורה בזוג יש לה alert והצעות
             alert_line = line2_num if line2_num in orig_alerts else (line1_num if line1_num in orig_alerts else None)
             if alert_line is None:
                 continue
@@ -314,6 +349,7 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
             rejected_set = rejected_words.get(bad_word, set())
             all_rejected_candidates = [c for c in candidates if c['last_word'] in rejected_set]
             candidates = [c for c in candidates if c['last_word'] not in rejected_set]
+            
             if not candidates:
                 if all_rejected_candidates:
                     fallback_info.append({
@@ -324,16 +360,21 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
                     })
                 continue
 
+            # בחירת ההצעה הנוכחית לפי אינדקס הדפדוף
             sug        = candidates[suggestion_index % len(candidates)]
             orig_level = orig_alerts[alert_line]['level']
 
+            # חישוב רמת החריזה החדשה באמצעות ה-Core
             sug_voc    = _vocalize(sug['last_word'])
-            sug_suffix = get_phonetic_suffix(sug_voc, StressDetector.detect_stress(sug_voc))
-            target_suf = target_suffixes.get(alert_line, ())
-            new_level  = compare_phonetic_suffixes(sug_suffix, target_suf)
+            sug_stress = StressDetector.detect_stress(sug_voc)
+            sug_key    = RhymeChecker.extract_rhyme_key(sug_voc, sug_stress)
+            target_key = target_keys.get(alert_line, ())
+            new_level  = RhymeChecker.rhyme_level(sug_key, target_key)
 
-            if new_level >= orig_level:
+            if new_level >= orig_level or _letters_only(sug['last_word']) == _letters_only(bad_word):
+                print(f"[DEBUG] render: SKIPPED sug='{sug['last_word']}' bad='{bad_word}' new_level={new_level} orig_level={orig_level}")
                 continue
+            print(f"[DEBUG] render: SHOWING sug='{sug['last_word']}' for bad='{bad_word}' new_level={new_level}")
 
             has_replacements = True
             replacements_info.append({
@@ -343,8 +384,8 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
                 'suggested_word': sug['last_word'],
                 'suggested_line': sug['line'],
                 'method':         sug['method'],
-                'target_key':     str(target_suf),
-                'suggested_key':  str(sug_suffix),
+                'target_key':     str(target_key),
+                'suggested_key':  str(sug_key),
                 'rhyme_level':    new_level,
             })
 
@@ -356,9 +397,10 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
             display_lines[alert_idx] = prefix + marked
             eval_lines[alert_idx]    = sug['line']
 
+        # הערכה פונטית מחודשת של הבתים לאחר החלת השינויים
         new_metadata = vocalize_lines(eval_lines)
-        new_suffixes = [
-            get_phonetic_suffix(m['last_word_vocalized'], m['stress_type'])
+        new_keys     = [
+            RhymeChecker.extract_rhyme_key(m['last_word_vocalized'], m['stress_type'])
             for m in new_metadata
         ]
 
@@ -371,17 +413,10 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
             if not had_alert and not was_changed2 and not was_changed1:
                 continue
 
-            suf1  = new_suffixes[line1_num - 1]
-            suf2  = new_suffixes[line2_idx]
-            # שימוש ב-rhyme_level ישירות כדי שהסיווג יהיה מדויק לפי הלוגיקה הנכונה
-            k1    = RhymeChecker.extract_rhyme_key(
-                new_metadata[line1_num - 1]['last_word_vocalized'],
-                new_metadata[line1_num - 1]['stress_type']
-            )
-            k2    = RhymeChecker.extract_rhyme_key(
-                new_metadata[line2_idx]['last_word_vocalized'],
-                new_metadata[line2_idx]['stress_type']
-            )
+            k1 = new_keys[line1_num - 1]
+            k2 = new_keys[line2_idx]
+            
+            # בדיקת הרמה הסופית לאחר שינוי
             level = RhymeChecker.rhyme_level(k1, k2)
             label, color, txt = LEVEL_LABEL.get(level, ('חרוז חסר', '#ff9999', '#333'))
 
@@ -389,19 +424,19 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
                 badge = (
                     f" <span style='background-color:{color};font-size:10px;"
                     f"padding:1px 5px;border-radius:3px;font-weight:bold;color:{txt};'>"
-                    f"⚠️ {label} ({line1_num}-{line2_num})</span>"
+                    f" {label} ({line1_num}-{line2_num})</span>"
                 )
             elif was_changed2 or was_changed1:
                 badge = (
                     f" <span style='background-color:#b3d9ff;font-size:10px;"
                     f"padding:1px 5px;border-radius:3px;font-weight:bold;color:#004085;'>"
-                    f"🚀 חרוז שופר! {label} ({line1_num}-{line2_num})</span>"
+                    f" חרוז שופר! {label} ({line1_num}-{line2_num})</span>"
                 )
             else:
                 badge = (
                     f" <span style='background-color:{color};font-size:10px;"
                     f"padding:1px 5px;border-radius:3px;font-weight:bold;color:{txt};'>"
-                    f"✨ {label} ({line1_num}-{line2_num})</span>"
+                    f" {label} ({line1_num}-{line2_num})</span>"
                 )
             badges[line1_num] = badge
             badges[line2_num] = badge

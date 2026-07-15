@@ -10,7 +10,6 @@ from core.stress_detector import StressDetector
 from services.nakdan_service import NakdanService
 from services.bert_service import get_fill_mask_suggestions, complete_sentence, get_contextual_suggestions, validate_line_completeness
 from services.learning_service import get_min_acceptable_level, is_bad_pair
-from services.phonetic_rhyme_checker import compare_phonetic_suffixes
 
 _nakdan = NakdanService()
 
@@ -110,27 +109,7 @@ def _is_valid_hebrew_word(word: str) -> bool:
     return True
 
 
-def _suffix_from_rhyme_key(key: tuple) -> tuple:
-    """שקול ל-get_phonetic_suffix, אבל מקבל key מוכן במקום (word, stress)."""
-    if not key:
-        return ('', ())
 
-    last_vowel = ''
-    vowel_index = -1
-    for i in range(len(key) - 1, -1, -1):
-        if key[i][1]:
-            last_vowel = key[i][1]
-            vowel_index = i
-            break
-
-    if not last_vowel:
-        return ('', ())
-
-    consonants = tuple(c for c, v in key[vowel_index + 1:] if c)
-    return (last_vowel, consonants)
-
-
-def build_candidates(
     lines: list[str],
     line2_idx: int,
     bad_word: str,
@@ -171,10 +150,9 @@ def build_candidates(
 
         voc = _vocalize(word)
         full_key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
-        candidate_suffix = _suffix_from_rhyme_key(full_key)
-        level = compare_phonetic_suffixes(target_key, candidate_suffix)
+        level = RhymeChecker.rhyme_level(full_key, target_key)
 
-        if is_bad_pair(target_key_str, str(candidate_suffix)):
+        if is_bad_pair(target_key_str, str(full_key)):
             bad_pair_words.add(word)
             continue
 
@@ -256,10 +234,9 @@ def get_enhanced_suggestions(
         
         voc = _vocalize(word)
         full_key = RhymeChecker.extract_rhyme_key(voc, StressDetector.detect_stress(voc))
-        candidate_suffix = _suffix_from_rhyme_key(full_key)
-        level = compare_phonetic_suffixes(target_key, candidate_suffix)
+        level = RhymeChecker.rhyme_level(full_key, target_key)
 
-        if is_bad_pair(target_key_str, str(candidate_suffix)):
+        if is_bad_pair(target_key_str, str(full_key)):
             continue
 
         buckets[level].append(word)

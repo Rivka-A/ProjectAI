@@ -1,15 +1,7 @@
 """
-RhymeChecker — זיהוי חרוז מבוסס ייצוג פונטי.
-
-שלבי העיבוד:
-  1. to_phonemes()  — הופך מילה מנוקדת לרצף פונמות מפורש, למשל:
-       וְיִרְאָה  →  ['v','i','r','A','']   (A = פתח/קמץ, '' = הא נחה בסוף)
-       RA         →  ['r','A']
-     כך ניתן להשוות ישירות.
-  2. rhyme_phonemes() — מחלץ את פונמות הסיומת לפי הטעמה.
-  3. rhyme_level()    — משווה שתי סיומות ומחזיר ציון 1-5.
+RhymeChecker — מנוע פונטי אחוד לזיהוי, דירוג, סינון וניתוח חריזה.
+מקור האמת היחיד (Single Source of Truth) לפרויקט.
 """
-
 
 class RhymeChecker:
 
@@ -71,37 +63,24 @@ class RhymeChecker:
         '\u05E6': 'ts',
         '\u05E7': 'k',
         '\u05E8': 'r',
-        '\u05E9': 's',   # שין/שין שמאלית — מנורמל ל-s (שין ימנית = sh, אבל לחרוז מספיק)
+        '\u05E9': 's',   # שין/שין שמאלית — מנורמל ל-s
         '\u05EA': 't',
     }
 
-    # שין ימנית = sh (עם נקודה ימנית)
-    # שין שמאלית = s (עם נקודה שמאלית)
-
     ALL_NIQUD = set(NIQUD_TO_VOWEL) | {DAGESH, SHINDOT, SINDOT}
 
-    # source={
-    # 'GUTTURALS' : {'\u05D0', '\u05D4', '\u05D7', '\u05E2'},
-    # 'LINGUISTIC' : {'\u05D3','\u05D8','\u05DC', '\u05DF','\u05E0','\u05E0','\u05EA'},
-    # 'TEETHING' : {'\u05D6','\u05E1','\u05E5','\u05E6','\u05E9', '\u05C1' '\u05C2'},
-    # 'PALATAL' : {'\u05D2','\u05D9','\u05DA','\u05DB','\u05E7'},
-    # 'LIPS' : {'\u05D1','\u05D5','\u05DD','\u05DE','\u05E4','\u05E3'}
-    # }
+    # הגדרת קבוצות מוצא פונטיות
     source = {
-            'GUTTURALS': {'', 'h', 'x'},  # א (שקטה), ה, ח/כ רפה, ע (שקטה) -> מיוצגות ע"י פונמות ריקות, h או x
-            'LINGUISTIC': {'d', 't', 'l', 'n'},  # ד, ט, ל, נ, ת
-            'TEETHING': {'z', 's', 'ts', 'sh'},  # ז, ס, צ, ש (שמאלית וימנית) -> כאן נכנס 'sh'
-            'PALATAL': {'g', 'y', 'x', 'k','r'},     # ג, י, כ, ק
-            'LIPS': {'v', 'b', 'm', 'p', 'f'}    # ב, ו, מ, פ
-        }
+        'GUTTURALS': {'', 'h', 'x'},           # א (שקטה), ה, ח/כ רפה, ע (שקטה)
+        'LINGUISTIC': {'d', 't', 'l', 'n'},    # ד, ט, ל, נ, ת
+        'TEETHING': {'z', 's', 'ts', 'sh'},    # ז, ס, צ, ש
+        'PALATAL': {'g', 'y', 'x', 'k', 'r'},  # ג, י, כ, ק, ר
+        'LIPS': {'v', 'b', 'm', 'p', 'f'}      # ב, ו, מ, פ
+    }
 
     @classmethod
     def _to_syllables(cls, vocalized_word: str) -> list[tuple[str, str]]:
-        """
-        הופך מילה מנוקדת לרשימת הברות (phoneme_consonant, phoneme_vowel).
-        מטפל בפתח גנובה: פתח (ועוד ניקודים) שמופיעים לפני אות גרונית
-        בסוף מילה (ללא ניקוד אחרי הגרונית) סווגים כ-'Ag' (צליל עובר).
-        """
+        """הופך מילה מנוקדת לרשימת הברות (phoneme_consonant, phoneme_vowel)."""
         w = vocalized_word.replace('|', '')
 
         # זיהוי שין ימנית לפני הסרת נקודות
@@ -120,15 +99,13 @@ class RhymeChecker:
                 continue
 
             if '\u05D0' <= c <= '\u05EA':
-                # אסוף את הניקוד שאחרי האות
                 niqud = []
                 j = i + 1
                 while j < len(w) and w[j] in cls.ALL_NIQUD:
                     niqud.append(w[j])
                     j += 1
 
-                # בדוק פתח גנובה:
-                # תנאי: אות גרונית + פתח בניקוד + אין אחריה תנועה נוספת + זו האות האחרונה במילה
+                # בדוק פתח גנובה
                 next_letter_pos = j
                 while next_letter_pos < len(w) and w[next_letter_pos] in cls.ALL_NIQUD:
                     next_letter_pos += 1
@@ -141,7 +118,6 @@ class RhymeChecker:
                     and is_last_letter
                 )
 
-                # המר אות לפונמה
                 if c == '\u05E9':
                     cons = 'sh' if i in shin_positions else 's'
                 elif c == '\u05D1' and cls.DAGESH in niqud:
@@ -154,8 +130,7 @@ class RhymeChecker:
                     cons = cls.LETTER_TO_PHONEME.get(c, c)
 
                 if is_patah_ganuvah:
-                    # פתח גנובה: תנועה עוברת קצרה שלא שווה ל-A מלא
-                    vowel = 'Ag'  # A-ganuva
+                    vowel = 'Ag'
                 else:
                     vowel = ''
                     for n in niqud:
@@ -172,12 +147,7 @@ class RhymeChecker:
 
     @classmethod
     def _rhyme_tail(cls, syllables: list[tuple[str, str]], stress_type: str) -> list[tuple[str, str]]:
-        """
-        מחלץ את זנב החרוז מתוך ההברות.
-        מלרע: מהתנועה האחרונה בעלת ערך (לא '') ועד הסוף.
-        מלעיל: מהתנועה הלפני-אחרונה.
-        """
-        # מיקומי הברות עם תנועה
+        """מחלץ את זנב החרוז מתוך ההברות."""
         voiced = [i for i, (c, v) in enumerate(syllables) if v != '']
 
         if not voiced:
@@ -188,16 +158,12 @@ class RhymeChecker:
         else:
             start = voiced[-2] if len(voiced) >= 2 else voiced[-1]
 
-        # כלול את ההברה שלפני ה-start (העיצור הנושא)
         start = max(0, start - 1) if start > 0 else start
         return syllables[start:]
 
     @classmethod
     def extract_rhyme_key(cls, vocalized_word: str, stress_type: str) -> tuple:
-        """
-        מחזיר מפתח חרוז כ-tuple של (cons, vowel) pairs.
-        tuple ניתן להשוואה ישירה.
-        """
+        """מחזיר מפתח חרוז פונטי כ-tuple של זוגות (עיצור, תנועה)."""
         syllables = cls._to_syllables(vocalized_word)
         tail = cls._rhyme_tail(syllables, stress_type)
         return tuple(tail)
@@ -205,58 +171,149 @@ class RhymeChecker:
     @classmethod
     def rhyme_level(cls, key1: tuple, key2: tuple) -> int:
         """
-        1 = חרוז מושלם  (כל המפתח זהה)
-        2 = חרוז טוב   (תנועה + עיצורים סופיים זהים, עיצור נושא שונה)
-        3 = עיצור משותף  (תנועה זהה, עיצורים סופיים זהים אך שייכים לאותה קבוצת מוצא)
-        4 = תנועה משותפת (תנועה זהה, שתיהן פתוחות בלי עיצור)
+        מחזיר ציון רמת חריזה בין 1 ל-5:
+        1 = חרוז מושלם    (כל המפתח זהה)
+        2 = חרוז טוב      (תנועה + עיצורים סופיים זהים, עיצור נושא באותה קבוצה)
+        3 = עיצור משותף   (תנועה זהה, עיצורים סופיים שונים באותה קבוצה)
+        4 = תנועה משותפת  (תנועה זהה, ללא עיצורים חוסמים בסוף - אסונאנס פתוח)
         5 = לא חרוז
         """
         if key1 == key2:
             return 1
 
-        def last_syllable(key):
+        # פונקציית עזר פנימית לחילוץ בטוח
+        def analyze_key(key):
+            onset = ''
+            vowel = ''
+            coda = ()
+            
+            if not key:
+                return onset, vowel, coda
+
             for i in range(len(key) - 1, -1, -1):
-                if key[i][1]:
-                    return key[i][1], tuple(c for c, v in key[i+1:] if c)
-            return '', ()
+                c, v = key[i]
+                if v != '':
+                    onset = c
+                    vowel = v
+                    # ה-Coda מנוקה מ-h שקטה בסוף המילה
+                    coda = tuple(char for char, vow in key[i+1:] if char and char != 'h')
+                    return onset, vowel, coda
+            return onset, vowel, coda
 
-        v1, ca1 = last_syllable(key1)
-        v2, ca2 = last_syllable(key2)
+        onset1, v1, coda1 = analyze_key(key1)
+        onset2, v2, coda2 = analyze_key(key2)
 
-        if not v1 or not v2:
+        # אם אין תנועה מוטעמת או שהתנועות שונות - פוסל מיד
+        if not v1 or not v2 or v1 != v2:
             return 5
 
-        if v1 != v2:
+        # --- דרגה 4 (אסונאנס פתוח) ---
+        # אם שתי המילים מסתיימות בתנועה פתוחה וזהה (ללא קודה חוסמת)
+        # הן מוגדרות מיד כדרגה 4, ללא תלות בקבוצת ה-Onset! (למשל: גיתה ומשפחה)
+        if not coda1 and not coda2:
+            return 4
+
+        # פונקציית עזר לקבלת קבוצת המוצא הפונטית של עיצור
+        def get_group(c):
+            if not c:
+                return 'GUTTURALS'
+            for name, phonemes in cls.source.items():
+                if c in phonemes:
+                    return name
+            return None
+
+        onset_group1 = get_group(onset1)
+        onset_group2 = get_group(onset2)
+        
+        # בדרגות 2 ו-3, אנחנו כן דורשים שהעיצורים הנושאים (Onset) יהיו מאותה קבוצה
+        if onset_group1 != onset_group2:
             return 5
 
-        # תנועה זהה מכאן
-        if ca1 == ca2:
-            return 2  # עיצורים סופיים זהים (עיצור נושא שונה בלבד)
+        # --- דרגה 2 (עיצורים סופיים זהים) ---
+        if coda1 == coda2:
+            return 2
 
-        # עיצורים סופיים שונים
-        if not ca1 and not ca2:
-            return 4  # שתיהן פתוחות
-
-        if ca1 and ca2:
-            def get_group(c):
-                for name, phonemes in cls.source.items():
-                    if c in phonemes:
-                        return name
-                return None
-            # כל העיצורים חייבים להיות באותה קבוצת מוצא זוגית
-            if len(ca1) == len(ca2) and all(
+        # --- דרגה 3 (עיצורים סופיים שונים אך מאותה קבוצה פונטית) ---
+        if len(coda1) == len(coda2) and len(coda1) > 0:
+            if all(
                 get_group(c1) == get_group(c2) and get_group(c1) is not None
-                for c1, c2 in zip(ca1, ca2)
+                for c1, c2 in zip(coda1, coda2)
             ):
                 return 3
 
         return 5
 
+    # =========================================================================
+    #               לוגיקות סינון, דירוג וניתוח (ממוזגות מה-Improved)
+    # =========================================================================
+
+    @classmethod
+    def is_valid_rhyme(cls, word1: str, word2: str, stress1: str, stress2: str, min_level: int = 2) -> bool:
+        """בוחן האם שתי מילים מנוקדות מתחרזות ברמת סף מסוימת ומעלה."""
+        key1 = cls.extract_rhyme_key(word1, stress1)
+        key2 = cls.extract_rhyme_key(word2, stress2)
+        
+        level = cls.rhyme_level(key1, key2)
+        return level <= min_level
+
+    @classmethod
+    def filter_suggestions_by_rhyme(cls, suggestions: list[str], target_word: str, 
+                                    target_stress: str, min_level: int = 2,
+                                    vocalize_fn=None, detect_stress_fn=None) -> list[str]:
+        """
+        מסנן רשימת מילים מוצעות ומחזיר רק את אלו שמתחרזות ברמה הנדרשת ומעלה.
+        vocalize_fn ו-detect_stress_fn מוזרקים מבחוץ למניעת ייבוא מעגלי.
+        """
+        if not vocalize_fn or not detect_stress_fn:
+            raise ValueError("יש להזריק פונקציות ניקוד וזיהוי הטעמה למניעת ייבוא מעגלי.")
+
+        filtered = []
+        target_key = cls.extract_rhyme_key(target_word, target_stress)
+        
+        for sug in suggestions:
+            try:
+                voc = vocalize_fn(sug)
+                stress = detect_stress_fn(voc)
+                sug_key = cls.extract_rhyme_key(voc, stress)
+                
+                level = cls.rhyme_level(target_key, sug_key)
+                if level <= min_level:
+                    filtered.append(sug)
+            except Exception:
+                continue
+        return filtered
+
+    @classmethod
+    def rank_suggestions_by_rhyme_quality(cls, suggestions: list[str], target_word: str,
+                                          target_stress: str, vocalize_fn=None, 
+                                          detect_stress_fn=None) -> list[tuple[str, int]]:
+        """מדרג רשימת מילים מוצעות ומחזיר רשימה של טאפלים (מילה, רמת_חריזה) ממוינת מהטוב ביותר."""
+        if not vocalize_fn or not detect_stress_fn:
+            raise ValueError("יש להזריק פונקציות ניקוד וזיהוי הטעמה למניעת ייבוא מעגלי.")
+
+        ranked = []
+        target_key = cls.extract_rhyme_key(target_word, target_stress)
+        
+        for sug in suggestions:
+            try:
+                voc = vocalize_fn(sug)
+                stress = detect_stress_fn(voc)
+                sug_key = cls.extract_rhyme_key(voc, stress)
+                
+                level = cls.rhyme_level(target_key, sug_key)
+                if level <= 4:  # חוקי לחריזה כלשהי
+                    ranked.append((sug, level))
+            except Exception:
+                continue
+        
+        ranked.sort(key=lambda x: x[1])
+        return ranked
+
     @classmethod
     def analyze_stanza(cls, lines_with_metadata: list[dict]) -> dict:
-        """מזהה תבנית חריזה ומפיק דוח התרעות."""
-
+        """מנתח בית של שיר ומזהה תבניות חריזה, כולל הפקת דוחות והתרעות."""
         LEVEL_TYPE = {
+            1: 'חרוז מושלם',
             2: 'חרוז טוב',
             3: 'עיצור משותף',
             4: 'תנועה משותפת',
@@ -285,7 +342,6 @@ class RhymeChecker:
                 expected_pairs = [(0,1),(1,2),(2,3)]
             elif is_aaab:
                 pattern_name = 'א-א-א-ב (חריזה פיוטית)'
-
                 expected_pairs = [(0,1),(1,2)]
             elif score_aabb >= score_abab and score_aabb >= score_abba:
                 pattern_name = 'א-א-ב-ב (חריזה צמודה)'
@@ -305,13 +361,20 @@ class RhymeChecker:
             level = cls.rhyme_level(line_keys[idx1], line_keys[idx2])
             if level == 1:
                 continue
-            w1 = lines_with_metadata[idx1]['original_word']
-            w2 = lines_with_metadata[idx2]['original_word']
+            w1 = lines_with_metadata[idx1].get('original_word', 'מילה א')
+            w2 = lines_with_metadata[idx2].get('original_word', 'מילה ב')
+            
+            alert_name = LEVEL_TYPE.get(level, 'חרוז חסר')
             alerts.append({
-                'type': LEVEL_TYPE[level],
+                'type': alert_name,
                 'level': level,
                 'lines': (idx1+1, idx2+1),
-                'message': f'שורה {idx1+1} ({w1}) ושורה {idx2+1} ({w2}): {LEVEL_TYPE[level]}.'
+                'message': f'שורה {idx1+1} ({w1}) ושורה {idx2+1} ({w2}): {alert_name}.'
             })
 
-        return {'pattern': pattern_name, 'alerts': alerts, 'line_keys': line_keys, 'expected_pairs_indices': expected_pairs}
+        return {
+            'pattern': pattern_name,
+            'alerts': alerts,
+            'line_keys': line_keys,
+            'expected_pairs_indices': expected_pairs
+        }

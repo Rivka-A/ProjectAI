@@ -9,6 +9,10 @@ def get_phonetic_suffix(word_vocalized: str, stress: str) -> tuple:
     key = RhymeChecker.extract_rhyme_key(word_vocalized, stress)
     if not key:
         return ('', ())
+
+    # בדוק אם המילה מסתיימת בה' נחה (cons='h', vowel='')
+    trailing_silent_h = (key[-1] == ('h', ''))
+
     last_vowel = ''
     vowel_index = -1
     for i in range(len(key) - 1, -1, -1):
@@ -18,7 +22,19 @@ def get_phonetic_suffix(word_vocalized: str, stress: str) -> tuple:
             break
     if not last_vowel:
         return ('', ())
-    consonants = [key[i][0] for i in range(vowel_index + 1, len(key)) if key[i][0]]
+
+    # אסוף עיצורים אחרי התנועה, ללא ה' נחה סופית
+    consonants = [
+        key[i][0] for i in range(vowel_index + 1, len(key))
+        if key[i][0] and not (trailing_silent_h and i == len(key) - 1 and key[i][0] == 'h')
+    ]
+
+    # אם אין עיצורים אחרי התנועה — קח את העיצור שנשא את התנועה עצמה
+    if not consonants and trailing_silent_h and vowel_index >= 0:
+        bearer = key[vowel_index][0]
+        if bearer:
+            consonants = [bearer]
+
     return (last_vowel, tuple(consonants))
 
 
