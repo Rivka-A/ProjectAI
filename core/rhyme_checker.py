@@ -78,6 +78,10 @@ class RhymeChecker:
         'LIPS': {'v', 'b', 'm', 'p', 'f'}      # ב, ו, מ, פ
     }
 
+    # משקל לכל רמת חריזה: ככל שהחריזה טובה יותר (רמה נמוכה) - משקל גבוה יותר.
+    # משמש לקביעת מבנה חריזה (analyze_stanza) לפי דירוג מדורג ולא סף בינארי.
+    LEVEL_WEIGHT = {1: 4, 2: 3, 3: 2, 4: 1, 5: 0}
+
     @classmethod
     def _to_syllables(cls, vocalized_word: str) -> list[tuple[str, str]]:
         """הופך מילה מנוקדת לרשימת הברות (phoneme_consonant, phoneme_vowel)."""
@@ -186,7 +190,7 @@ class RhymeChecker:
             onset = ''
             vowel = ''
             coda = ()
-            
+
             if not key:
                 return onset, vowel, coda
 
@@ -224,7 +228,7 @@ class RhymeChecker:
 
         onset_group1 = get_group(onset1)
         onset_group2 = get_group(onset2)
-        
+
         # בדרגות 2 ו-3, אנחנו כן דורשים שהעיצורים הנושאים (Onset) יהיו מאותה קבוצה
         if onset_group1 != onset_group2:
             return 5
@@ -252,12 +256,12 @@ class RhymeChecker:
         """בוחן האם שתי מילים מנוקדות מתחרזות ברמת סף מסוימת ומעלה."""
         key1 = cls.extract_rhyme_key(word1, stress1)
         key2 = cls.extract_rhyme_key(word2, stress2)
-        
+
         level = cls.rhyme_level(key1, key2)
         return level <= min_level
 
     @classmethod
-    def filter_suggestions_by_rhyme(cls, suggestions: list[str], target_word: str, 
+    def filter_suggestions_by_rhyme(cls, suggestions: list[str], target_word: str,
                                     target_stress: str, min_level: int = 2,
                                     vocalize_fn=None, detect_stress_fn=None) -> list[str]:
         """
@@ -269,13 +273,13 @@ class RhymeChecker:
 
         filtered = []
         target_key = cls.extract_rhyme_key(target_word, target_stress)
-        
+
         for sug in suggestions:
             try:
                 voc = vocalize_fn(sug)
                 stress = detect_stress_fn(voc)
                 sug_key = cls.extract_rhyme_key(voc, stress)
-                
+
                 level = cls.rhyme_level(target_key, sug_key)
                 if level <= min_level:
                     filtered.append(sug)
@@ -285,7 +289,7 @@ class RhymeChecker:
 
     @classmethod
     def rank_suggestions_by_rhyme_quality(cls, suggestions: list[str], target_word: str,
-                                          target_stress: str, vocalize_fn=None, 
+                                          target_stress: str, vocalize_fn=None,
                                           detect_stress_fn=None) -> list[tuple[str, int]]:
         """מדרג רשימת מילים מוצעות ומחזיר רשימה של טאפלים (מילה, רמת_חריזה) ממוינת מהטוב ביותר."""
         if not vocalize_fn or not detect_stress_fn:
@@ -293,21 +297,32 @@ class RhymeChecker:
 
         ranked = []
         target_key = cls.extract_rhyme_key(target_word, target_stress)
-        
+
         for sug in suggestions:
             try:
                 voc = vocalize_fn(sug)
                 stress = detect_stress_fn(voc)
                 sug_key = cls.extract_rhyme_key(voc, stress)
-                
+
                 level = cls.rhyme_level(target_key, sug_key)
                 if level <= 4:  # חוקי לחריזה כלשהי
                     ranked.append((sug, level))
             except Exception:
                 continue
-        
+
         ranked.sort(key=lambda x: x[1])
         return ranked
+
+    @classmethod
+    def _pattern_score(cls, levels: list[int]) -> float:
+        """
+        ציון ממוצע מדורג לפי משקלות הרמות (LEVEL_WEIGHT), ולא ספירה בינארית
+        של "מתחרז/לא מתחרז". תבנית עם חרוזים ברמה טובה יותר תקבל ציון גבוה יותר
+        גם אם שתי התבניות היו "עוברות סף" בבדיקה בינארית.
+        """
+        if not levels:
+            return 0.0
+        return sum(cls.LEVEL_WEIGHT.get(l, 0) for l in levels) / len(levels)
 
     @classmethod
     def analyze_stanza(cls, lines_with_metadata: list[dict]) -> dict:
@@ -331,30 +346,43 @@ class RhymeChecker:
 
         expected_pairs = []
         if num_lines == 4:
-            is_aaaa = len(set(line_keys)) == 1
-            is_aaab = (line_keys[0] == line_keys[1] == line_keys[2]) and line_keys[2] != line_keys[3]
-            score_aabb = (line_keys[0]==line_keys[1]) + (line_keys[2]==line_keys[3])
-            score_abab = (line_keys[0]==line_keys[2]) + (line_keys[1]==line_keys[3])
-            score_abba = (line_keys[0]==line_keys[3]) + (line_keys[1]==line_keys[2])
+            # רמות החריזה בפועל לכל זוג שורות אפשרי - נבדק פעם אחת ומשמש לכל השאר
+            l01 = cls.rhyme_level(line_keys[0], line_keys[1])
+            l12 = cls.rhyme_level(line_keys[1], line_keys[2])
+            l23 = cls.rhyme_level(line_keys[2], line_keys[3])
+            l02 = cls.rhyme_level(line_keys[0], line_keys[2])
+            l13 = cls.rhyme_level(line_keys[1], line_keys[3])
+            l03 = cls.rhyme_level(line_keys[0], line_keys[3])
+
+            # AAAB: מקרה אסימטרי מיוחד - 3 השורות הראשונות מתחרזות היטב,
+            # הרביעית שונה בכוונה (אין לה זוג). נבדק פונטית (<=2) ולא בשוויון מדויק (==).
+            is_aaab = l01 <= 2 and l12 <= 2 and l23 >= 4
+            is_aaaa = cls._pattern_score([l01, l12, l23]) == cls.LEVEL_WEIGHT[1]  # כל הזוגות ברמה 1
 
             if is_aaaa:
                 pattern_name = 'א-א-א-א (חריזה מלאה)'
-                expected_pairs = [(0,1),(1,2),(2,3)]
+                expected_pairs = [(0, 1), (1, 2), (2, 3)]
             elif is_aaab:
                 pattern_name = 'א-א-א-ב (חריזה פיוטית)'
-                expected_pairs = [(0,1),(1,2)]
-            elif score_aabb >= score_abab and score_aabb >= score_abba:
-                pattern_name = 'א-א-ב-ב (חריזה צמודה)'
-                expected_pairs = [(0,1),(2,3)]
-            elif score_abba >= score_abab:
-                pattern_name = 'א-ב-ב-א (חריזה חובקת)'
-                expected_pairs = [(0,3),(1,2)]
+                expected_pairs = [(0, 1), (1, 2)]
             else:
-                pattern_name = 'א-ב-א-ב (חריזה מסורגת)'
-                expected_pairs = [(0,2),(1,3)]
+                candidates = {
+                    'א-א-ב-ב (חריזה צמודה)':  (cls._pattern_score([l01, l23]), [(0, 1), (2, 3)]),
+                    'א-ב-א-ב (חריזה מסורגת)': (cls._pattern_score([l02, l13]), [(0, 2), (1, 3)]),
+                    'א-ב-ב-א (חריזה חובקת)':  (cls._pattern_score([l03, l12]), [(0, 3), (1, 2)]),
+                }
+                best_name, (best_score, best_pairs) = max(candidates.items(), key=lambda kv: kv[1][0])
+
+                if best_score == 0:
+                    # אף זוג לא מתחרז באף רמה - אין לכפות תבנית שרירותית
+                    pattern_name = 'חופשית / לא זוהתה תבנית'
+                    expected_pairs = []
+                else:
+                    pattern_name = best_name
+                    expected_pairs = best_pairs
         else:
             pattern_name = 'חריזה חופשית / אחר'
-            expected_pairs = [(i, i+1) for i in range(num_lines-1)]
+            expected_pairs = [(i, i + 1) for i in range(num_lines - 1)]
 
         alerts = []
         for idx1, idx2 in expected_pairs:
@@ -363,7 +391,7 @@ class RhymeChecker:
                 continue
             w1 = lines_with_metadata[idx1].get('original_word', 'מילה א')
             w2 = lines_with_metadata[idx2].get('original_word', 'מילה ב')
-            
+
             alert_name = LEVEL_TYPE.get(level, 'חרוז חסר')
             alerts.append({
                 'type': alert_name,
