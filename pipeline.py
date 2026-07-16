@@ -1,3 +1,4 @@
+
 """
 Orchestration: ניתוח שיר, בניית הצעות, רינדור HTML.
 מחובר ישירות למנוע ה-Core המאוחד (RhymeChecker).
@@ -16,8 +17,17 @@ from core.stress_detector import StressDetector
 # ייבוא שירותים משלימים
 from services.improved_suggestion_service import vocalize_lines, _vocalize, _is_valid_hebrew_word, _letters_only
 from services.line_generator import rewrite_line_for_rhyme
-from services.feedback_service import get_rejected_words
-from services.bert_service import get_fill_mask_suggestions
+from services.feedback_service import get_hard_rejected_words, get_soft_rejected_words
+from services.bert_service import get_fill_mask_suggestions, get_contextual_suggestions
+
+# --- כוונון כמות ההצעות המוחזרות ---
+# BERT_TOP_K            - כמה מועמדים גולמיים לבקש מ-BERT (get_contextual_suggestions).
+#                         ככל שגבוה יותר - יותר מועמדים לסינון הפונטי, אך איטי יותר.
+# EXTEND_NUM_SUGGESTIONS - כמה הצעות "הרחבת שורה" (rewrite_line_for_rhyme) לבקש.
+# MAX_SUGGESTIONS_PER_WORD - כמה הצעות סופיות (אחרי סינון ומיון) להחזיר לכל מילה.
+BERT_TOP_K = 500
+EXTEND_NUM_SUGGESTIONS = 10
+MAX_SUGGESTIONS_PER_WORD = 10
 
 
 LEVEL_LABEL = {
@@ -34,10 +44,18 @@ def _get_line_suggestions(
     line_idx: int,
     bad_word: str,
     target_key: tuple,
-    rejected: set,
+    hard_rejected: set,
+    soft_rejected: set = frozenset(),
     orig_level: int = 5,
 ) -> list[dict]:
-    """בניית הצעות למילה חלופית בשורה ספציפית באמצעות BERT וסינון פונטי."""
+    """בניית הצעות למילה חלופית או הרחבת שורה באמצעות BERT והקשר רחב.
+
+    hard_rejected - מילים שנפסלו סופית (למשל "לא מתאים להקשר") ולעולם לא
+                    תוחזרנה, גם לא כ-Fallback.
+    soft_rejected - מילים שנחסמות כברירת מחדל (למשל "לא אהבתי"), אך עדיין
+                    נכללות ברשימה עם דגל 'soft_warning' כדי שיהיה אפשר
+                    להחזיר אותן כמוצא אחרון אם אין הצעה אחרת.
+    """
     suggestions = []
     seen_words = set()
     bad_letters = _letters_only(bad_word)
@@ -47,21 +65,30 @@ def _get_line_suggestions(
         return []
 
     print(f"[DEBUG] _get_line_suggestions called: line_idx={line_idx}, bad_word='{bad_word}', orig_level={orig_level}")
-    # חסום רק את המילות הסיום של שורות אחרות בבית
+    
+    # חסום רק את מילות הסיום של שורות אחרות בבית
     for i, l in enumerate(lines):
         if i != line_idx:
             words_in_l = l.split()
             if words_in_l:
                 seen_words.add(_letters_only(words_in_l[-1]))
     seen_words.add(_letters_only(bad_word))
-    print(f"[DEBUG] seen_words (blocked): {seen_words}")
 
-    # קבלת הצעות גולמיות ממודל BERT
-    raw = get_fill_mask_suggestions(lines, line_idx, bad_word, top_k=50)
-    print(f"[DEBUG] BERT raw suggestions for '{bad_word}': {raw}")
+    # שימוש ב-get_contextual_suggestions לקבלת הצעות המבוססות על מיקום והקשר רחב
+    line = lines[line_idx]
+    words_in_line = line.split()
+    
+    # מציאת מיקום המילה הבעייתית בשורה הנוכחית
+    position = len(words_in_line)  # ברירת מחדל: הוספה לסוף השורה
+    if bad_word in words_in_line:
+        position = words_in_line.index(bad_word)
+
+    # קריאה לפונקציית ההקשר התומכת בהוספה/החלפה באופן נקי ומקצועי
+    raw = get_contextual_suggestions(line, position, top_k=BERT_TOP_K)
+    print(f"[DEBUG] BERT contextual suggestions for position {position}: {raw}")
+    
     for word in raw:
-        if not word or _letters_only(word) in seen_words or word in rejected:
-            print(f"[DEBUG] BLOCKED '{word}' (letters: {_letters_only(word)})")
+        if not word or _letters_only(word) in seen_words or word in hard_rejected:
             continue
         if _letters_only(word) == bad_letters:
             continue
@@ -73,26 +100,47 @@ def _get_line_suggestions(
         stress = StressDetector.detect_stress(voc)
         sug_key = RhymeChecker.extract_rhyme_key(voc, stress)
         level = RhymeChecker.rhyme_level(sug_key, target_key)
-        print(f"[DEBUG] ACCEPTED '{word}' -> level {level}")
 
         if level <= 5:
-            words_in_line = lines[line_idx].split()
-            new_line = ' '.join(words_in_line[:-1] + [word]) if words_in_line else word
-            suggestions.append({'line': new_line, 'last_word': word, 'level': level, 'method': 'last_word'})
+            # הרכבה דינמית של השורה בהתאם למיקום (תומך גם בהוספה וגם בהחלפה)
+            new_words = list(words_in_line)
+            if position >= len(new_words):
+                # הוספת מילה חדשה לסוף המשפט
+                new_words.append(word)
+            else:
+                # החלפת מילה קיימת במיקום הנוכחי
+                new_words[position] = word
+                
+            new_line = ' '.join(new_words)
+            suggestions.append({
+                'line': new_line, 
+                'last_word': word, 
+                'level': level, 
+                'method': 'contextual_position' if position < len(words_in_line) else 'contextual_append',
+                'soft_warning': word in soft_rejected,
+            })
 
-    extended = rewrite_line_for_rhyme(lines[line_idx], target_key, num_suggestions=10)
-    print(f"[DEBUG] extended suggestions: {[(s['last_word'], s['level']) for s in extended]}")
+    # הרחבת משפט באמצעות rewrite_line_for_rhyme שמשתמש כעת ב-get_fill_mask_suggestions הנקי
+    extended = rewrite_line_for_rhyme(lines[line_idx], target_key, num_suggestions=EXTEND_NUM_SUGGESTIONS)
     for sug in extended:
         w = sug.get('last_word', '')
         w_letters = _letters_only(w)
+        if w in hard_rejected:
+            continue
         if w and w_letters not in seen_words and '[MASK]' not in sug.get('line', ''):
             seen_words.add(w_letters)
-            suggestions.append({'line': sug['line'], 'last_word': w, 'level': sug['level'], 'method': sug.get('method', 'extend')})
-        elif w and w_letters in seen_words:
-            print(f"[DEBUG] extended BLOCKED '{w}' (already in stanza)")
+            suggestions.append({
+                'line': sug['line'], 
+                'last_word': w, 
+                'level': sug['level'], 
+                'method': sug.get('method', 'extend'),
+                'soft_warning': w in soft_rejected,
+            })
 
-    suggestions.sort(key=lambda x: x['level'])
-    return suggestions[:10]
+    # מיון: קודם לפי רמת חרוז, ובתוך אותה רמה - הצעות "נקיות" (ללא אזהרה)
+    # לפני הצעות מסומנות כ-soft_warning, כדי שהן תופענה רק כשאין ברירה טובה יותר.
+    suggestions.sort(key=lambda x: (x['level'], x.get('soft_warning', False)))
+    return suggestions[:MAX_SUGGESTIONS_PER_WORD]
 
 
 def _get_pair_suggestions_parallel(
@@ -103,14 +151,16 @@ def _get_pair_suggestions_parallel(
     key2: tuple,
     word1: str,
     word2: str,
-    rejected1: set,
-    rejected2: set,
+    hard_rejected1: set,
+    soft_rejected1: set,
+    hard_rejected2: set,
+    soft_rejected2: set,
     orig_level: int = 5,
 ) -> tuple[list[dict], list[dict]]:
     """הרצת חיפוש הצעות במקביל לשתי השורות שאינן מתחרזות היטב."""
     with ThreadPoolExecutor(max_workers=2) as ex:
-        f1 = ex.submit(_get_line_suggestions, lines, idx2, word2, key1, rejected2, orig_level)
-        f2 = ex.submit(_get_line_suggestions, lines, idx1, word1, key2, rejected1, orig_level)
+        f1 = ex.submit(_get_line_suggestions, lines, idx2, word2, key1, hard_rejected2, soft_rejected2, orig_level)
+        f2 = ex.submit(_get_line_suggestions, lines, idx1, word1, key2, hard_rejected1, soft_rejected1, orig_level)
         sug_for_line2 = f1.result()
         sug_for_line1 = f2.result()
     return sug_for_line2, sug_for_line1
@@ -220,7 +270,7 @@ def _build_stanza_suggestions(stanza: dict, poem_wide: dict | None, rejected_wor
             rhyme_keys[line1_num - 1],
             rhyme_keys[line2_num - 1]
         )
-        # כל רמה מעל 2 (כלומר 3, 4, 5) נחשבת לדורשת שיפור/התרעה
+        # כל רמה מעל 2 (כלומר 3, 4, 5) נחשבת לדורשת שיפור
         if level > 2:
             orig_alerts[line2_num] = {'level': level, 'lines': (line1_num, line2_num)}
             print(f"[DEBUG] alert: lines ({line1_num},{line2_num}), level={level}")
@@ -240,11 +290,16 @@ def _build_stanza_suggestions(stanza: dict, poem_wide: dict | None, rejected_wor
         key1 = rhyme_keys[idx1]
         key2 = rhyme_keys[idx2]
         
-        rejected1 = get_rejected_words(word1) | rejected_words.get(word1, set())
-        rejected2 = get_rejected_words(word2) | rejected_words.get(word2, set())
+        # משוב שנצבר בעבר (מהקובץ) + דחיות מהסשן הנוכחי (מטופלות כ"קשיחות"
+        # לצורך המעבר הנוכחי - המשתמש כבר דחה אותן ברגע זה בפועל).
+        hard_rejected1 = get_hard_rejected_words(word1) | rejected_words.get(word1, set())
+        soft_rejected1 = get_soft_rejected_words(word1) - hard_rejected1
+        hard_rejected2 = get_hard_rejected_words(word2) | rejected_words.get(word2, set())
+        soft_rejected2 = get_soft_rejected_words(word2) - hard_rejected2
 
         sug_line2, sug_line1 = _get_pair_suggestions_parallel(
-            lines, idx1, idx2, key1, key2, word1, word2, rejected1, rejected2,
+            lines, idx1, idx2, key1, key2, word1, word2,
+            hard_rejected1, soft_rejected1, hard_rejected2, soft_rejected2,
             orig_level=orig_alerts[line2_num]['level'],
         )
 
@@ -268,7 +323,6 @@ def _build_stanza_suggestions(stanza: dict, poem_wide: dict | None, rejected_wor
             target_keys[line1_num] = key2
             orig_alerts[line1_num] = orig_alerts.pop(line2_num)
             orig_alerts[line1_num]['lines'] = (line2_num, line1_num)
-
 
     return {
         **stanza,
@@ -346,29 +400,73 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
                 continue
 
             bad_word     = metadata[alert_idx]['original_word']
-            rejected_set = rejected_words.get(bad_word, set())
-            all_rejected_candidates = [c for c in candidates if c['last_word'] in rejected_set]
-            candidates = [c for c in candidates if c['last_word'] not in rejected_set]
-            
-            if not candidates:
-                if all_rejected_candidates:
+            # דחיות סשן נוכחיות (למשל: המשתמש כרגע לחץ "דלג" על ההצעה) -
+            # מטופלות כקשיחות למעבר הנוכחי בלבד.
+            session_rejected = rejected_words.get(bad_word, set())
+            hard_candidates = [c for c in candidates if c['last_word'] in session_rejected]
+            clean_candidates = [
+                c for c in candidates
+                if c['last_word'] not in session_rejected and not c.get('soft_warning')
+            ]
+            soft_candidates = [
+                c for c in candidates
+                if c['last_word'] not in session_rejected and c.get('soft_warning')
+            ]
+
+            if not clean_candidates and not soft_candidates:
+                if hard_candidates:
                     fallback_info.append({
                         'line_num': alert_line,
                         'original_word': bad_word,
                         'original_line': lines[alert_idx],
-                        'rejected_suggestions': [c['last_word'] for c in all_rejected_candidates],
+                        'rejected_suggestions': [c['last_word'] for c in hard_candidates],
+                        'message': 'לא נמצאו התאמות אחרות.',
                     })
                 continue
 
+            orig_level = orig_alerts[alert_line]['level']
+            target_key = target_keys.get(alert_line, ())
+
+            def _improves(cand: dict) -> bool:
+                """בודק אם מועמד נתון אכן משפר את רמת החריזה ביחס למקור."""
+                v = _vocalize(cand['last_word'])
+                s = StressDetector.detect_stress(v)
+                k = RhymeChecker.extract_rhyme_key(v, s)
+                lvl = RhymeChecker.rhyme_level(k, target_key)
+                return lvl < orig_level and _letters_only(cand['last_word']) != _letters_only(bad_word)
+
+            # "אין הצעות אחרות" נבדק כעת לפי שיפור בפועל, לא רק לפי קיום פורמלי:
+            # אם כל ההצעות ה"נקיות" לא באמת משפרות את החרוז, זה כמו שאין הצעה
+            # נקייה בכלל - ומותר לגשת להצעה ה"רכה" (soft) כמוצא אחרון.
+            clean_has_improving = any(_improves(c) for c in clean_candidates)
+
+            if clean_has_improving:
+                candidates = clean_candidates
+                fallback_used = False
+            elif soft_candidates:
+                # אין אף הצעה "נקייה" שבאמת משפרת - מותר להחזיר הצעה "רכה"
+                # (שסומנה כ"לא אהבתי" בעבר) כמוצא אחרון, עם אזהרה מפורשת.
+                candidates = soft_candidates
+                fallback_used = True
+                fallback_info.append({
+                    'line_num': alert_line,
+                    'original_word': bad_word,
+                    'original_line': lines[alert_idx],
+                    'rejected_suggestions': [c['last_word'] for c in soft_candidates],
+                    'message': 'לא נמצאו התאמות אחרות - מוצגת הצעה שסומנה בעבר כ"לא אהבתי".',
+                })
+            else:
+                # אין הצעה משפרת בין הנקיות, ואין בכלל הצעות רכות - שום דבר להציג.
+                candidates = clean_candidates
+                fallback_used = False
+
             # בחירת ההצעה הנוכחית לפי אינדקס הדפדוף
             sug        = candidates[suggestion_index % len(candidates)]
-            orig_level = orig_alerts[alert_line]['level']
 
             # חישוב רמת החריזה החדשה באמצעות ה-Core
             sug_voc    = _vocalize(sug['last_word'])
             sug_stress = StressDetector.detect_stress(sug_voc)
             sug_key    = RhymeChecker.extract_rhyme_key(sug_voc, sug_stress)
-            target_key = target_keys.get(alert_line, ())
             new_level  = RhymeChecker.rhyme_level(sug_key, target_key)
 
             if new_level >= orig_level or _letters_only(sug['last_word']) == _letters_only(bad_word):
@@ -387,13 +485,21 @@ def render_poem_html(all_stanzas: list[dict], suggestion_index: int, rejected_wo
                 'target_key':     str(target_key),
                 'suggested_key':  str(sug_key),
                 'rhyme_level':    new_level,
+                'soft_warning_fallback': fallback_used,
             })
 
             prefix = sug['line'].rsplit(sug['last_word'], 1)[0]
-            marked = (
-                f"<mark style='background-color:#ffffcc;font-weight:bold;"
-                f"color:#d9381e;padding:0 4px;border-radius:3px;'>{sug['last_word']}</mark>"
-            )
+            if fallback_used:
+                marked = (
+                    f"<mark title='לא נמצאו התאמות אחרות - הצעה שסומנה בעבר כ&quot;לא אהבתי&quot;' "
+                    f"style='background-color:#fff0cc;font-weight:bold;"
+                    f"color:#8a5a00;padding:0 4px;border-radius:3px;border:1px dashed #d99a00;'>{sug['last_word']}</mark>"
+                )
+            else:
+                marked = (
+                    f"<mark style='background-color:#ffffcc;font-weight:bold;"
+                    f"color:#d9381e;padding:0 4px;border-radius:3px;'>{sug['last_word']}</mark>"
+                )
             display_lines[alert_idx] = prefix + marked
             eval_lines[alert_idx]    = sug['line']
 

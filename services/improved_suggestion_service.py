@@ -100,7 +100,16 @@ def get_suggestions_by_rhyme(
     if line_idx >= len(lines):
         return []
 
-    raw = get_fill_mask_suggestions(lines, line_idx, bad_word)
+    # הכנת ההקשר עם מסיכה (MASK) בצורה עצמאית ומקצועית
+    masked_lines = list(lines)
+    line = masked_lines[line_idx]
+    prefix = line.rsplit(bad_word, 1)[0].strip() if bad_word in line else line.strip()
+    masked_lines[line_idx] = f"{prefix} [MASK]"
+    context = " ".join(masked_lines)
+
+    # קריאה ל-API הנקי של ה-BERT
+    raw = get_fill_mask_suggestions(context, top_k=50)
+    
     if not raw:
         raw = get_contextual_suggestions(lines[line_idx], len(lines[line_idx].split()) - 1)
     if not raw:

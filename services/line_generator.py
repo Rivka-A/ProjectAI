@@ -17,7 +17,7 @@ def generate_rhyming_lines(
     suggestions = []
     masked_line = f"{content_idea} [MASK]"
     try:
-        raw_suggestions = get_fill_mask_suggestions([masked_line], 0, "[MASK]", top_k=50)
+        raw_suggestions = get_fill_mask_suggestions(masked_line, top_k=50)
         for word in raw_suggestions:
             from services.improved_suggestion_service import _vocalize
             try:
@@ -66,7 +66,7 @@ def _replace_last_word(line: str, target_key: Tuple, num: int) -> List[dict]:
     original_last_letters = "".join(c for c in original_last if '\u05D0' <= c <= '\u05EA')
     masked_line = ' '.join(words[:-1]) + ' [MASK]'
     try:
-        raw_suggestions = get_fill_mask_suggestions([masked_line], 0, '[MASK]', top_k=50)
+        raw_suggestions = get_fill_mask_suggestions(masked_line, top_k=50)
         for word in raw_suggestions:
             word_letters = "".join(c for c in word if '\u05D0' <= c <= '\u05EA')
             if word_letters == original_last_letters:
@@ -98,7 +98,7 @@ def _extend_line(line: str, target_key: Tuple, num: int) -> List[dict]:
     suggestions = []
     extended_line = f"{line} [MASK]"
     try:
-        raw_suggestions = get_fill_mask_suggestions([extended_line], 0, '[MASK]', top_k=50)
+        raw_suggestions = get_fill_mask_suggestions(extended_line, top_k=50)
         for word in raw_suggestions:
             from services.improved_suggestion_service import _vocalize
             try:
@@ -162,7 +162,6 @@ def _reorder_words(line: str, target_key, num: int) -> list:
     return suggestions[:num]
 
 
-
 def suggest_line_variations(
     line: str,
     target_key: Tuple,
@@ -187,7 +186,7 @@ def create_line_from_idea(
     masked_line = f"{idea} [MASK]"
     suggestions = []
     try:
-        raw_suggestions = get_fill_mask_suggestions([masked_line], 0, '[MASK]', top_k=50)
+        raw_suggestions = get_fill_mask_suggestions(masked_line, top_k=50)
         for word in raw_suggestions:
             from services.improved_suggestion_service import _vocalize
             try:

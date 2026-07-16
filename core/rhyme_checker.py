@@ -355,7 +355,6 @@ class RhymeChecker:
             l03 = cls.rhyme_level(line_keys[0], line_keys[3])
 
             # AAAB: מקרה אסימטרי מיוחד - 3 השורות הראשונות מתחרזות היטב,
-            # הרביעית שונה בכוונה (אין לה זוג). נבדק פונטית (<=2) ולא בשוויון מדויק (==).
             is_aaab = l01 <= 2 and l12 <= 2 and l23 >= 4
             is_aaaa = cls._pattern_score([l01, l12, l23]) == cls.LEVEL_WEIGHT[1]  # כל הזוגות ברמה 1
 
