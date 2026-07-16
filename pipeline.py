@@ -25,7 +25,7 @@ from services.bert_service import get_fill_mask_suggestions, get_contextual_sugg
 #                         ככל שגבוה יותר - יותר מועמדים לסינון הפונטי, אך איטי יותר.
 # EXTEND_NUM_SUGGESTIONS - כמה הצעות "הרחבת שורה" (rewrite_line_for_rhyme) לבקש.
 # MAX_SUGGESTIONS_PER_WORD - כמה הצעות סופיות (אחרי סינון ומיון) להחזיר לכל מילה.
-BERT_TOP_K = 500
+BERT_TOP_K = 30
 EXTEND_NUM_SUGGESTIONS = 10
 MAX_SUGGESTIONS_PER_WORD = 10
 
